@@ -553,6 +553,15 @@ setInterval(refreshProfile,1000);
 // (نستخدم أعلى id متسلسل بدون فجوات، عشان الرسائل المفقودة بالنص ترجع بعد)
 function contiguousHigh(){ let i=1; while(MSG_SEEN.has(i)) i++; return i-1; }
 setInterval(()=>{ try{ sendToLua('msgsync:'+contiguousHigh()); }catch(e){} }, 2500);
+// نفس فكرة استرجاع المفقود، بس لشات الكلان والخاص: نخبر اللعبة بأعلى id
+// استلمناه فعلياً (رسم بالصفحة) — هذا يصير المرجع للجلب الجاي، مو افتراض إن
+// الإرسال نجح. لو رسالة ضاعت بالطريق، اللعبة تعيد جلبها من البوت تلقائياً.
+setInterval(()=>{
+  try{
+    const dmMax = ACTIVE_DM_WITH ? (DM_LASTID[ACTIVE_DM_WITH]||0) : 0;
+    sendToLua('chatsync:'+JSON.stringify({clan:CLAN_MAXID, dmWith:ACTIVE_DM_WITH||'', dm:dmMax}));
+  }catch(e){}
+}, 3000);
 
 /* ---------- notifications toggle ---------- */
 function applyNotifBtn(){
@@ -644,6 +653,7 @@ function sendSticker(url){
    ═══════════════════════════════════════════════════════════ */
 let ACTIVE_CHANNEL='general';   // 'general' | 'clan' | 'dm'
 let ACTIVE_DM_WITH=null;        // اسم الطرف الثاني بالمحادثة المفتوحة (null = قائمة المحادثات)
+let CLAN_LOAD_TOKEN=0;          // يمنع محاولات إعادة الجلب القديمة من التأثير لو فتحنا/سكرنا التبويب بسرعة
 let CLAN_MAXID=0;               // أعلى id وصل من شات الكلان (جلب تراكمي)
 const CLAN_SEEN=new Set();
 let DM_LASTID={};                // { name: أعلى id وصلنا لهالمحادثة }
@@ -691,6 +701,14 @@ function switchChannel(ch){
     if(!MY_CLAN_LOADED){
       list.innerHTML=`<div class="chempty">⏳ جاري التحقق من كلانك...</div>`;
       sendToLua('clanmine:');
+      const tk=++CLAN_LOAD_TOKEN;
+      setTimeout(()=>{ if(tk===CLAN_LOAD_TOKEN && !MY_CLAN_LOADED && ACTIVE_CHANNEL==='clan') sendToLua('clanmine:'); }, 1500);
+      setTimeout(()=>{ if(tk===CLAN_LOAD_TOKEN && !MY_CLAN_LOADED && ACTIVE_CHANNEL==='clan') sendToLua('clanmine:'); }, 3500);
+      setTimeout(()=>{
+        if(tk===CLAN_LOAD_TOKEN && !MY_CLAN_LOADED && ACTIVE_CHANNEL==='clan'){
+          document.getElementById('chlist').innerHTML=`<div class="chempty">تعذّر التحقق من الكلان<br><span style="color:var(--or1);cursor:pointer;text-decoration:underline" onclick="switchChannel('clan')">حاول ثانية</span></div>`;
+        }
+      }, 6000);
     } else if(!MY_CLAN){
       list.innerHTML=`<div class="chempty">🛡️ انضم لكلان أول عشان تشوف شاته</div>`;
     } else {
@@ -1322,7 +1340,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.5'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.6'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>

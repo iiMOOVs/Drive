@@ -695,7 +695,7 @@ function switchChannel(ch){
       list.innerHTML=`<div class="chempty">🛡️ انضم لكلان أول عشان تشوف شاته</div>`;
     } else {
       list.innerHTML=`<div class="chrow active"><span class="ic">${esc(MY_CLAN.emoji||'🛡️')}</span><div class="info"><div class="ttl">دردشة ${esc(MY_CLAN.name)}</div><div class="sub">خاصة بأعضاء الكلان</div></div></div>`;
-      if(!CLAN_LOADED_ONCE){ CLAN_LOADED_ONCE=true; sendToLua('clanchatfetch:0'); }
+      sendToLua('clanchatpoll:');   // نجيب أي رسائل جديدة كل مرة نفتح فيها (مو أول مرة بس)
     }
   } else if(ch==='dm'){
     if(ACTIVE_DM_WITH){ openDm(ACTIVE_DM_WITH); return; }
@@ -705,7 +705,6 @@ function switchChannel(ch){
   const input=document.getElementById('msgin');
   input.placeholder = ch==='dm' ? (ACTIVE_DM_WITH?('رسالة إلى '+ACTIVE_DM_WITH+'...'):'افتح محادثة أول...') : (ch==='clan'?'رسالة لأعضاء الكلان...':'اكتب رسالتك هنا...');
 }
-let CLAN_LOADED_ONCE=false;
 
 // ===== شات الكلان =====
 function addClanMsg(m){ genericBubble(document.getElementById('clanmsgs'), m, m.name===ME, CLAN_SEEN); if(m.id>CLAN_MAXID) CLAN_MAXID=m.id; }
@@ -717,17 +716,45 @@ function renderDmList(){
   const q=(document.getElementById('dmsearch')?.value||'').toLowerCase();
   const filtered=DM_CONVS.filter(c=>!q||c.withName.toLowerCase().includes(q));
   if(!filtered.length){ wrap.innerHTML=`<div class="chempty">💬 ما عندك محادثات خاصة بعد<br>اضغط "+ محادثة جديدة" بالأسفل</div>`; return; }
-  wrap.innerHTML=filtered.map(c=>{
-    const initial=(c.withName||'؟').trim().charAt(0).toUpperCase();
-    const timeStr=c.lastAt?fmtT(c.lastAt):'';
-    return `<div class="chrow" data-dmname="${esc(c.withName)}">
-      <div class="dmav">${esc(initial)}</div>
-      <div class="info"><div class="ttl">${esc(c.withName)} <span style="font-size:10.5px;color:var(--mut);font-weight:400">${timeStr}</span></div>
-      <div class="sub">${esc(c.lastText||'')}</div></div>
-      ${c.unread>0?`<span class="badge">${c.unread}</span>`:''}
-    </div>`;
-  }).join('');
+  const requests=filtered.filter(c=>c.status==='pending' && !c.isInitiator);
+  const others=filtered.filter(c=>!(c.status==='pending' && !c.isInitiator));
+  let h='';
+  if(requests.length){
+    h+=`<div class="chsec">✉️ طلبات محادثة (${requests.length})</div>`;
+    h+=requests.map(c=>{
+      const initial=(c.withName||'؟').trim().charAt(0).toUpperCase();
+      return `<div class="chrow" style="cursor:default">
+        <div class="dmav">${esc(initial)}</div>
+        <div class="info"><div class="ttl">${esc(c.withName)}</div><div class="sub">${esc(c.lastText||'')}</div></div>
+        <div style="display:flex;gap:5px;flex-shrink:0">
+          <button data-accept="${esc(c.withName)}" style="background:#12B886;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:13px">✓</button>
+          <button data-reject="${esc(c.withName)}" style="background:#E5484D;border:none;color:#fff;border-radius:7px;width:26px;height:26px;cursor:pointer;font-size:13px">✕</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+  if(others.length){
+    if(requests.length) h+=`<div class="chsec">المحادثات</div>`;
+    h+=others.map(c=>{
+      const initial=(c.withName||'؟').trim().charAt(0).toUpperCase();
+      const timeStr=c.lastAt?fmtT(c.lastAt):'';
+      const waiting=(c.status==='pending' && c.isInitiator);
+      return `<div class="chrow" data-dmname="${esc(c.withName)}">
+        <div class="dmav">${esc(initial)}</div>
+        <div class="info"><div class="ttl">${esc(c.withName)} <span style="font-size:10.5px;color:var(--mut);font-weight:400">${timeStr}</span></div>
+        <div class="sub">${waiting?'⏳ بانتظار الموافقة':esc(c.lastText||'')}</div></div>
+        ${c.unread>0?`<span class="badge">${c.unread}</span>`:''}
+      </div>`;
+    }).join('');
+  }
+  wrap.innerHTML=h;
   wrap.querySelectorAll('[data-dmname]').forEach(el=>{ el.onclick=()=>openDm(el.getAttribute('data-dmname')); });
+  wrap.querySelectorAll('[data-accept]').forEach(el=>{ el.onclick=(ev)=>{ ev.stopPropagation(); dmRespond(el.getAttribute('data-accept'), true); }; });
+  wrap.querySelectorAll('[data-reject]').forEach(el=>{ el.onclick=(ev)=>{ ev.stopPropagation(); dmRespond(el.getAttribute('data-reject'), false); }; });
+}
+function dmRespond(withName, accept){
+  sendToLua('dmrespond:'+JSON.stringify({withName:withName, accept:accept}));
+  toast(accept?'تم القبول ✅':'تم الرفض');
 }
 
 // فتح محادثة معيّنة
@@ -745,10 +772,11 @@ function openDm(withName){
   const dmEl=document.getElementById('dmmsgs');
   const list=document.getElementById('chlist');
   list.innerHTML=`<div class="chrow active" onclick="closeDm()"><span class="ic">◀</span><div class="info"><div class="ttl">${esc(withName)}</div><div class="sub">اضغط للرجوع لقائمة المحادثات</div></div></div>`;
-  if(!DM_LOADED[withName]){
-    DM_LOADED[withName]=true; dmEl.innerHTML='';
-    sendToLua('dmfetch:'+JSON.stringify({withName:withName, since:0}));
-  }
+  // نجيب أي رسائل جديدة كل مرة نفتح فيها (مو أول مرة بس) — عشان أي رسالة وصلت
+  // والمحادثة كانت مقفولة ما تضيع (كانت مشكلة: يفتح بس ما يجيب شي جديد)
+  const since = DM_LOADED[withName] ? (DM_LASTID[withName]||0) : 0;
+  if(!DM_LOADED[withName]){ DM_LOADED[withName]=true; dmEl.innerHTML=''; }
+  sendToLua('dmfetch:'+JSON.stringify({withName:withName, since:since}));
 }
 function closeDm(){ ACTIVE_DM_WITH=null; try{sendToLua('dmclose:');}catch(e){} switchChannel('dm'); }
 
@@ -1296,7 +1324,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.3'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.4'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>

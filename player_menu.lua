@@ -1652,7 +1652,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v8.3", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v8.4", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -2232,6 +2232,18 @@ local __dcOk, DriveChat = pcall(function()
     end)
   end
 
+  -- قبول/رفض محادثة معلّقة
+  local function dmRespond(withName, accept)
+    if RANKS_URL == "" then return end
+    local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
+    local body = '{"name":' .. jsonStr(myName()) .. ',"withName":' .. jsonStr(withName) .. ',"accept":' .. (accept and 'true' or 'false') .. '}'
+    pcall(function()
+      web.post(base .. '/drive/dm/respond', { ['Content-Type'] = 'application/json' }, body, function(err, resp)
+        pollDmList()
+      end)
+    end)
+  end
+
   local function sendDescription(txt)
     if RANKS_URL == "" then return end
     local base = RANKS_URL:gsub('/drive/ranks%s*$', '')
@@ -2373,7 +2385,7 @@ local __dcOk, DriveChat = pcall(function()
     -- ═══════════ [3-CHAT] شات الكلان + الشات الخاص ═══════════
     if data:sub(1, 9) == 'clansend:' then clanSendChat(data:sub(10), nil); return end
     if data:sub(1, 14) == 'clansendstick:' then clanSendChat(nil, data:sub(15)); return end
-    if data == 'clanchatfetch:0' then S.clanChatMaxId = 0; pollClanChat(); return end
+    if data == 'clanchatpoll:' then pollClanChat(); return end
     if data:sub(1, 7) == 'dmsend:' then
       local okp, obj = pcall(function() return JSON.parse(data:sub(8)) end)
       if okp and obj and obj.withName and obj.text then dmSend(obj.withName, obj.text, nil) end
@@ -2396,6 +2408,11 @@ local __dcOk, DriveChat = pcall(function()
     end
     if data == 'dmlist:' then pollDmList(); return end
     if data == 'dmclose:' then S.activeDmWith = nil; return end
+    if data:sub(1, 10) == 'dmrespond:' then
+      local okp, obj = pcall(function() return JSON.parse(data:sub(11)) end)
+      if okp and obj and obj.withName then dmRespond(obj.withName, obj.accept == true) end
+      return
+    end
     if data:sub(1, 12) == 'clandetails:' then clanFetchDetails(data:sub(13)); return end
     if data:sub(1, 11) == 'clanemojis:' then clanFetchEmojis(); return end
     if data:sub(1, 11) == 'clancreate:' then
@@ -2988,7 +3005,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v8.3 loaded OK — connectivity diagnostics added for 3-chat backend")
+  ac.log("[DRIVE CHAT] v8.4 loaded OK — DM sync fix + accept/reject for new conversations")
 end
 
 --=================================================================
@@ -3285,7 +3302,7 @@ local function drawChatHint()
     ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
     drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
     ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
-    dwBox("اضغط هنا او C", 13.5 * k,
+    dwBox("C اضغط هنا او", 13.5 * k,
       92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
     if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
     if clicked then DriveChat.toggle() end
@@ -3343,7 +3360,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v8.3 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v8.4 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)

@@ -801,9 +801,8 @@ function renderNewConvList(){
   const list=MEMBERS.filter(m=>!m.isMe && (!q||m.name.toLowerCase().includes(q)));
   if(!list.length){ wrap.innerHTML='<div class="chempty">ما فيه أعضاء متاحين</div>'; return; }
   wrap.innerHTML=list.map(m=>{
-    const initial=(m.name||'؟').trim().charAt(0).toUpperCase();
     return `<div class="chrow" style="margin:0 0 6px" data-startconv="${esc(m.name)}">
-      <div class="dmav">${esc(initial)}</div>
+      <div class="mav">${avatarHTML(m,36)}</div>
       <div class="info"><div class="ttl">${esc(m.name)}</div></div>
     </div>`;
   }).join('');
@@ -1183,9 +1182,8 @@ function renderInviteList(){
   if(q) cands=cands.filter(m=>(m.name||'').toLowerCase().includes(q));
   if(!cands.length){ box.innerHTML='<div class="csub" style="text-align:center;padding:16px;color:var(--mut)">لا يوجد لاعبين متاحين للدعوة الآن</div>'; return; }
   box.innerHTML=cands.map(m=>{
-    const initial=(m.name||'؟').charAt(0).toUpperCase();
     return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 9px;background:#17161e;border:1px solid #23212e;border-radius:10px">
-      <span style="display:flex;align-items:center;gap:9px"><span style="width:28px;height:28px;border-radius:50%;background:#F7820E33;border:1.5px solid #F7820E;display:flex;align-items:center;justify-content:center;font-weight:900;color:#F7820E">${esc(initial)}</span>${esc(m.name)}</span>
+      <span style="display:flex;align-items:center;gap:9px">${avatarHTML(m,28)}${esc(m.name)}</span>
       <button class="cbtn pri" style="padding:5px 14px" onclick="clanDoInvite('${esc(m.name)}')">دعوة</button></div>`;
   }).join('');
 }
@@ -1324,7 +1322,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.4'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.5'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>

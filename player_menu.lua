@@ -1652,7 +1652,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v8.5", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v8.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -2158,18 +2158,15 @@ local __dcOk, DriveChat = pcall(function()
         pcall(function()
           local d = JSON.parse(resp.body)
           if not (d and d.ok and S.browser and S.ready) then return end
+          -- ملاحظة: ما نحدّث S.clanChatMaxId/S.dmLastId هنا بعد — نجاح الجلب من البوت
+          -- ما يعني إن الدفع للصفحة نجح. الصفحة نفسها تخبرنا بأعلى id استلمته فعلاً
+          -- عبر chatsync: (كل ٣ ثواني)، وهذا هو المرجع الوحيد لتقديم المؤشر. لو رسالة
+          -- ضاعت بالطريق، الدورة الجاية تعيد جلبها تلقائياً بدل ما تضيع للأبد.
           if d.clanMessages and #d.clanMessages > 0 then
-            for _, m in ipairs(d.clanMessages) do
-              if (m.id or 0) > (S.clanChatMaxId or 0) then S.clanChatMaxId = m.id end
-            end
             jsend('dcClanChat', enrichMsgs(d.clanMessages))
           end
           jsend('dcDmList', d.dmList or {})
           if withName and withName ~= "" and d.dmMessages and #d.dmMessages > 0 then
-            S.dmLastId[withName] = math.max(S.dmLastId[withName] or 0, dmSince)
-            for _, m in ipairs(d.dmMessages) do
-              if (m.id or 0) > S.dmLastId[withName] then S.dmLastId[withName] = m.id end
-            end
             jsend('dcDmMsgs', { withName = withName, messages = enrichMsgs(d.dmMessages) })
           end
         end)
@@ -2309,6 +2306,19 @@ local __dcOk, DriveChat = pcall(function()
         -- رسائلي أنا الصفحة تعرضها محلياً فور الإرسال (بدون id) — لا نعيد دفعها هنا
         -- (كانت تتكرر عندي بس: الصفحة ما تعرف id نسختها المحلية فتظنها ناقصة وتطلبها، فتتكرر)
         if (m.id or 0) > haveId and not m.mine then toBrowser(m) end
+      end
+      return
+    end
+    -- نفس فكرة msgsync، بس لشات الكلان والخاص: الصفحة تخبرنا بأعلى id استلمته فعلاً
+    -- (رسمته)، وهذا يصير المرجع الوحيد لتقديم المؤشر — نفس منطق الفقاعات الموثوق
+    if data:sub(1, 9) == 'chatsync:' then
+      local okp, obj = pcall(function() return JSON.parse(data:sub(10)) end)
+      if okp and obj then
+        if obj.clan ~= nil then S.clanChatMaxId = math.max(S.clanChatMaxId or 0, tonumber(obj.clan) or 0) end
+        if obj.dmWith and obj.dmWith ~= "" and obj.dm ~= nil then
+          S.dmLastId = S.dmLastId or {}
+          S.dmLastId[obj.dmWith] = math.max(S.dmLastId[obj.dmWith] or 0, tonumber(obj.dm) or 0)
+        end
       end
       return
     end
@@ -2977,7 +2987,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v8.5 loaded OK — consolidated polling (1 request instead of 3) + avatar fixes")
+  ac.log("[DRIVE CHAT] v8.6 loaded OK — chatsync reliability (page-confirmed cursor) + loading timeout")
 end
 
 --=================================================================
@@ -3332,7 +3342,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v8.5 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v8.6 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)

@@ -347,7 +347,7 @@ function pumpTitle(){
   if(TBUSY || !TQUEUE.length) return;
   TBUSY = true;
   document.title = 'DRIVECHAT:' + TQUEUE.shift();
-  setTimeout(()=>{ TBUSY = false; pumpTitle(); }, 45);
+  setTimeout(()=>{ TBUSY = false; pumpTitle(); }, 80);
 }
 function sendToLua(msg){
   const payload = (++TSEQ) + ':' + String(msg);
@@ -1340,7 +1340,7 @@ document.getElementById('opac').oninput=function(){
 applyNotifBtn();
 
 /* أعلم Lua إن الصفحة جاهزة */
-window.CHAT_VERSION='v8.6'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
+window.CHAT_VERSION='v8.7'; try{console.log('DRIVE chat.html '+window.CHAT_VERSION+' loaded');}catch(e){}
 window.addEventListener('load',()=>{ document.title='DRIVECHAT:ready'; setTimeout(()=>sendToLua('ready'),150); });
 </script>
 </body>

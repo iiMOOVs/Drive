@@ -1652,7 +1652,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v8.6", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v8.8", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -1805,7 +1805,7 @@ local menuPrevKey = false
 local __dcOk, DriveChat = pcall(function()
   -- ===== إعدادات =====
   local KEY      = string.byte("C")
-  local CHAT_URL = "https://iimoovs.github.io/Drive/chat_1.html"
+  local CHAT_URL = "https://iimoovs.github.io/DriveScripts/chat_1.html"
   -- ديسكورد (اختياري — خلّه "" للتعطيل):
   local ADMIN_WEBHOOK   = "https://discord.com/api/webhooks/1536077079446294588/EXaBQ2dv9hJwU8EHRNDxCM6VJZHL42XQfGq9ytBjKefZzhxHCds_DqHMn7LgMED3IESH"   -- ويب هوك روم «تواصل مع الإدارة» (زر 📨 داخل الشات)
   local CHATLOG_WEBHOOK = "https://discord.com/api/webhooks/1536076922402902087/rNy5tdYAdkRS7baBkKu0sb56nowE5TfpueIG2JgitqBF9_z7vNXbpUcsVCq7uwsauVQ_"   -- ويب هوك روم مراقبة الشات (كل رسالة يرسلها اللاعب توصل هناك)
@@ -2944,11 +2944,15 @@ local __dcOk, DriveChat = pcall(function()
       chatTyping = S.open   -- أوقف مفاتيح منيو اللاعب (رجوع/بوست/شدّات) طول ما الشات مفتوح
 
       -- تجميد اختصارات كل السكربتات الثانية (الشدّات/الأدمن...) وقت ما الشات مفتوح:
-      -- نرفع وضع الإدخال إلى UI مع حفظ/استرجاع الوضع السابق (نفس علاج كراش ReplayManager)
-      if S.open and not S.inputSaved then
-        S.inputSaved = true
+      -- نرفع وضع الإدخال إلى UI مع حفظ/استرجاع الوضع السابق (نفس علاج كراش ReplayManager).
+      -- نعيد فرضه كل فريم طول ما الشات مفتوح (مو مرة وحدة بس) — لو سكربت ثاني على
+      -- السيرفر يرجّعه لوضع اللعب بالخطأ، نستعيده فوراً بدل ما يتسرب ضغط المفاتيح.
+      if S.open then
+        if not S.inputSaved then
+          S.inputSaved = true
+          pcall(function() if ac.getCurrentInputMethod then S.savedInput = ac.getCurrentInputMethod() end end)
+        end
         pcall(function()
-          if ac.getCurrentInputMethod then S.savedInput = ac.getCurrentInputMethod() end
           if ac.setCurrentInputMethod and ac.UserInputMode then ac.setCurrentInputMethod(ac.UserInputMode.UI) end
         end)
       elseif (not S.open) and S.inputSaved then
@@ -2987,7 +2991,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v8.6 loaded OK — chatsync reliability (page-confirmed cursor) + loading timeout")
+  ac.log("[DRIVE CHAT] v8.8 loaded OK — UI input mode reasserted every frame (keyboard leak fix)")
 end
 
 --=================================================================
@@ -3342,7 +3346,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v8.6 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v8.8 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)

@@ -1317,6 +1317,37 @@ local function shaddaUpdate(dt)
   end
 end
 
+-- ═══════════ نقطة تجمع الأدمن (T/U/O/K/F/B) — منقولة من admin_menu.lua ═══════════
+-- كانت بملف منفصل، فما تقدر تكتشف "الشات مفتوح" بشكل موثوق (كل ملف Lua sandbox
+-- مستقل، ما يشوف متغيرات الثاني). هنا بنفس ملف الشات، تستخدم isTyping() الموثوق
+-- مباشرة (نفس الفحص اللي يحمي البوست والريوايند والشدة الشخصية فوق بنجاح).
+-- ملاحظة: نظام مختلف عن SHADDA_SLOTS فوق (ذاك شخصي لكل لاعب، هذا نقطة تجمع
+-- الأدمن المشتركة عبر السيرفر عن طريق أمر /shadda tp) — أسماء منفصلة عمداً.
+local ADMIN_SHADDA_KEYS = { T = string.byte("T"), U = string.byte("U"), O = string.byte("O"), K = string.byte("K"), F = string.byte("F"), B = string.byte("B") }
+local adminShaddaLastStates = { T = false, U = false, O = false, K = false, F = false, B = false }
+local adminFastCooldownTimer = 0
+
+local function adminShaddaUpdate(dt)
+  if adminFastCooldownTimer > 0 then adminFastCooldownTimer = adminFastCooldownTimer - dt end
+  local typing = isTyping()
+  for keyName, keyIndex in pairs(ADMIN_SHADDA_KEYS) do
+    local isDown = (not typing) and ui.keyboardButtonDown(keyIndex)
+    if isDown and not adminShaddaLastStates[keyName] then
+      if keyName == "F" or keyName == "B" then
+        if adminFastCooldownTimer <= 0 then
+          ac.sendChatMessage("/shadda tp " .. string.lower(keyName))
+          adminFastCooldownTimer = 10.0
+        else
+          pcall(function() ui.toast(ui.Icons.Warning, string.format("⏳ Wait %.1f s!", adminFastCooldownTimer)) end)
+        end
+      else
+        ac.sendChatMessage("/shadda tp " .. string.lower(keyName))
+      end
+    end
+    adminShaddaLastStates[keyName] = isDown
+  end
+end
+
 local function drawShadda(X, Y, W, H)
   sectionTitle("الشدّات الثابتة", "SHADDA", X, Y, W)
   dwRightBox("قف بالمكان → احفظ في حرف → اضغط الحرف ترجع له", 12, X, Y + 26, W - 44, 14, CDm)
@@ -1655,7 +1686,7 @@ panelBody = function()
     if cl then activeTab = i end
   end
   dwBox("غلق: زر  " .. CFG.MENU_KEY_LABEL, 11, 0, H - 40, NAV, 14, CDm)
-  dwBox("DRIVE © v8.9", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
+  dwBox("DRIVE © v9.0", 10, 0, H - 22, NAV, 12, CDm)   -- رقم النسخة: تأكد إنه يبان بعد التركيب
 
   -- ===== الشريط العلوي: حالة + إخفاء الشعارات + إغلاق =====
   local CX = NAV + 16
@@ -2994,7 +3025,7 @@ if not __dcOk then
   ac.log("DriveChat load failed: " .. tostring(DriveChat))
   DriveChat = { update = function() end, draw = function() end, isOpen = function() return false end, toggle = function() end, push = function() end, getRank = function() return nil end }
 else
-  ac.log("[DRIVE CHAT] v8.9 loaded OK — boost-key diagnostic added (keyboard leak investigation)")
+  ac.log("[DRIVE CHAT] v9.0 loaded OK — admin shadda keys moved here, uses reliable same-script check")
 end
 
 --=================================================================
@@ -3238,6 +3269,7 @@ function script.update(dt)
   extrasUpdate()
   rewindUpdate(dt)
   shaddaUpdate(dt)
+  adminShaddaUpdate(dt)
 
   pcall(function() DriveChat.update(dt) end)
   pcall(function() DriveTags.update(dt) end)   -- [29] تاقات الأسماء فوق السيارات
@@ -3349,7 +3381,7 @@ function script.drawUI()
   end
 end
 
-ac.log("DRIVE Panel loaded (v8.9 — XP levels (tag + profile))")
+ac.log("DRIVE Panel loaded (v9.0 — XP levels (tag + profile))")
 
 --=================================================================
 -- [27] ONLINE EXTRAS REGISTRATION (التسجيل في شريط الأونلاين)

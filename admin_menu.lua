@@ -827,29 +827,10 @@ function script.update(dt)
   if massTimer  > 0 then massTimer  = math.max(0, massTimer - dt) end
   if soundHold  > 0 then soundHold  = math.max(0, soundHold - dt) end
 
-  if canCap then
-      for keyName, keyIndex in pairs(SHADDA_KEYS) do
-          local isDown = ui.keyboardButtonDown(keyIndex)
-          if isDown and not shaddaLastStates[keyName] then
-              -- تشخيص: نسجّل حالة الفحوصات الثلاثة كل مرة يشتغل فيها مفتاح شدة —
-              -- عشان نتأكد هل الشات كان فعلاً مقفول وقتها أو الفحص فشل يكتشفه
-              pcall(function()
-                ac.log(string.format(
-                  "[SHADDA] key=%s wantCap=%s chatOpen=%s inputUI=%s",
-                  keyName,
-                  tostring(type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard()),
-                  tostring(type(ac.isChatOpen) == "function" and ac.isChatOpen()),
-                  tostring(type(ac.getCurrentInputMethod) == "function" and ac.getCurrentInputMethod() == ac.UserInputMode.UI)
-                ))
-              end)
-              if keyName == "F" or keyName == "B" then
-                  if fastCooldownTimer <= 0 then ac.sendChatMessage("/shadda tp " .. string.lower(keyName))
-                  else ui.toast(ui.Icons.Warning, string.format("⏳ Wait %.1f s!", fastCooldownTimer)) end
-              else ac.sendChatMessage("/shadda tp " .. string.lower(keyName)) end
-          end
-          shaddaLastStates[keyName] = isDown
-      end
-  end
+  -- ملاحظة: مفاتيح الشدة (T/U/O/K/F/B) انتقلت لملف الشات (player_menu.lua) —
+  -- كانت هنا ما تقدر تكتشف "الشات مفتوح" بشكل موثوق لأنها سكربت منفصل (sandbox
+  -- مستقل). استقبال رد السيرفر (!SHADDA_EXEC:) يبقى هنا بالأسفل، يشتغل عادي
+  -- بغض النظر عن أي سكربت أرسل أمر /shadda tp الأصلي.
 end
 
 ---------------------------------------------------------------
@@ -956,4 +937,4 @@ function script.drawUI()
   drawAdminOpenHint()
 end
 
-ac.log("DRIVE Admin Master UI v1.4 loaded — shadda-key diagnostic logging added (keyboard leak investigation)")
+ac.log("DRIVE Admin Master UI v1.5 loaded — shadda key-detection moved to player_menu.lua (keyboard leak fixed)")

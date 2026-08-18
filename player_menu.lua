@@ -2309,7 +2309,17 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- ===== فتح/قفل =====
+  local browserWarnShown = false
   local function openChat()
+    if not WebBrowser or not S.browser then
+      -- المتصفح ما تحمّل ولا اتبنى (على الأغلب نسخة CSP جديدة تغيّر فيها مسار الموديول) —
+      -- بدل ما يحس اللاعب إن زر C "ما يسوي شي" بصمت، نطلعله تنبيه واضح مرة وحدة.
+      if not browserWarnShown then
+        browserWarnShown = true
+        pcall(function() ui.toast(ui.Icons.Warning, "DRIVE Chat: غير متوافق مع نسخة CSP الحالية — بلغ الإدمن") end)
+      end
+      return
+    end
     S.open = true
     if S.browser and S.ready then jsend('dcFocus', true) end
   end
@@ -2491,18 +2501,29 @@ local __dcOk, DriveChat = pcall(function()
   -- CSP 0.3.0 غيّر طبقة الويب (CEF)؛ نحمّل المتصفح بأمان — لو فشل ما ينهار السكربت كله
   -- نجرّب أكثر من مسار للموديول (تحسّباً لتغيّر المسار في 0.3.0)
   local WebBrowser = nil
+  local WBFAIL = {}   -- سبب فشل كل مسار — يطلع باللوق عشان نعرف بالضبط وش تغيّر بأي نسخة CSP
   do
-    local paths = { 'shared/web/browser', 'shared/webbrowser', 'shared/web/webview', 'web/browser' }
+    -- كل مسار محتمل نعرفه لحد الآن. لو فيه نسخة CSP جديدة (preview545+) تغيّر فيها المسار،
+    -- زودّ القائمة هنا بدل ما تدوّر بمكان ثاني — هذا المكان الوحيد اللي يحدد كيف نحمّل المتصفح.
+    local paths = {
+      'shared/web/browser', 'shared/webbrowser', 'shared/web/webview', 'web/browser',
+      'shared/ui/webbrowser', 'shared/browser', 'shared/web',
+    }
     for _, p in ipairs(paths) do
       local ok, mod = pcall(require, p)
       if ok and type(mod) ~= 'nil' then
         WebBrowser = mod
         ac.log('[DRIVE CHAT] WebBrowser loaded from: ' .. p)
         break
+      else
+        WBFAIL[#WBFAIL + 1] = p .. ' -> ' .. tostring(mod)
       end
     end
     if not WebBrowser then
-      ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths (CSP 0.3.0?) — chat browser disabled')
+      local pv = 'n/a'
+      pcall(function() pv = tostring(ac.getPatchVersionCode()) end)
+      ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths — chat browser disabled — CSP patch code: ' .. pv)
+      for _, line in ipairs(WBFAIL) do ac.log('[DRIVE CHAT]   ' .. line) end
     end
   end
   -- ننشئ المتصفح مرة وحدة بحجم ثابت (نفس نمط IDDL بالحرف — pcall واحد، بدون رجوع/إعادة بناء)
@@ -3323,7 +3344,7 @@ local function drawChatHint()
     ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
     drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
     ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
-    dwBox("اضغط هنا او C", 13.5 * k,
+    dwBox("C اضغط هنا او ", 13.5 * k,
       92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
     if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
     if clicked then DriveChat.toggle() end

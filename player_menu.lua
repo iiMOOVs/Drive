@@ -2527,16 +2527,26 @@ local __dcOk, DriveChat = pcall(function()
     end
   end
   -- ننشئ المتصفح مرة وحدة بحجم ثابت (نفس نمط IDDL بالحرف — pcall واحد، بدون رجوع/إعادة بناء)
+  -- الموديول نفسه قد يتحمّل بنجاح (require) لكن الإنشاء (constructor) أو navigate/onReceive
+  -- تفشل لسبب ثاني (توقيع API تغيّر، CEF ما جهز وقتها، إلخ) — نسجّل أي خطأ هنا صراحة
+  -- بدل ما يبتلعه pcall بصمت، عشان نعرف بالضبط وين يوقف بالضبط.
   if WebBrowser then
-    pcall(function()
+    local bok, berr = pcall(function()
       S.browser = WebBrowser({ size = vec2(CHAT_W, CHAT_H), backgroundColor = rgbm(0, 0, 0, 0) })
+      ac.log('[DRIVE CHAT] browser instance created: ' .. tostring(S.browser))
       S.lastNav = 0
       S.browser:navigate(CHAT_URL)
+      ac.log('[DRIVE CHAT] browser:navigate() called OK')
       S.browser:onReceive('Drivechat', function(self, data)
         if type(data) == 'string' then handleRaw(data) end
       end)
       S.browser:onTitleChange(function(self, title) handleTitle(title) end)
+      ac.log('[DRIVE CHAT] browser onReceive/onTitleChange hooked OK')
     end)
+    if not bok then
+      ac.log('[DRIVE CHAT] browser CONSTRUCTION FAILED: ' .. tostring(berr))
+      S.browser = nil
+    end
   end
 
   -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
@@ -3344,7 +3354,7 @@ local function drawChatHint()
     ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
     drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
     ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
-    dwBox("C اضغط هنا او ", 13.5 * k,
+    dwBox("اضغط هنا او C", 13.5 * k,
       92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
     if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
     if clicked then DriveChat.toggle() end

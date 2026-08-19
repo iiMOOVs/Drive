@@ -2309,8 +2309,19 @@ local __dcOk, DriveChat = pcall(function()
   end
 
   -- ===== فتح/قفل =====
+  local browserWarnShown = false
   local function openChat()
+    if not WebBrowser or not S.browser then
+      -- المتصفح ما تحمّل ولا اتبنى (على الأغلب نسخة CSP جديدة تغيّر فيها مسار الموديول) —
+      -- بدل ما يحس اللاعب إن زر C "ما يسوي شي" بصمت، نطلعله تنبيه واضح مرة وحدة.
+      if not browserWarnShown then
+        browserWarnShown = true
+        pcall(function() ui.toast(ui.Icons.Warning, "DRIVE Chat: غير متوافق مع نسخة CSP الحالية — بلغ الإدمن") end)
+      end
+      return
+    end
     S.open = true
+    ac.log('[DRIVE CHAT] openChat(): S.open=true, S.ready=' .. tostring(S.ready))
     if S.browser and S.ready then jsend('dcFocus', true) end
   end
   local function closeChat()
@@ -2324,6 +2335,7 @@ local __dcOk, DriveChat = pcall(function()
     S.lastOk = S.clock
     S.acked = false
     S.readyAt = S.clock
+    ac.log('[DRIVE CHAT] markReady(): page said "ready" — JS handshake OK')
   end
 
   -- ===== أوامر الصفحة (JS -> Lua) =====
@@ -2466,7 +2478,12 @@ local __dcOk, DriveChat = pcall(function()
 
   -- كل أمر من الصفحة يجي بصيغة "<رقم>:<الأمر>" وعلى أكثر من قناة (sendAsync + عنوان الصفحة)
   -- ندمجها هنا مع منع التكرار — نفس الرقم ينفذ مرة وحدة فقط مهما تكرر وصوله
+  local __rawSeen = false
   local function handleRaw(payload)
+    if not __rawSeen then
+      __rawSeen = true
+      ac.log('[DRIVE CHAT] handleRaw(): first message ever received from the page: ' .. tostring(payload))
+    end
     if type(payload) ~= 'string' or payload == '' then return end
     local seq, cmd = payload:match('^(%d+):(.*)$')
     if seq then
@@ -2478,7 +2495,12 @@ local __dcOk, DriveChat = pcall(function()
       handleData(payload)   -- توافق مع أوامر بدون رقم
     end
   end
+  local __titleSeen = false
   local function handleTitle(t)
+    if not __titleSeen then
+      __titleSeen = true
+      ac.log('[DRIVE CHAT] handleTitle(): first onTitleChange ever fired, title=' .. tostring(t))
+    end
     if type(t) ~= 'string' then return end
     if t == 'DRIVECHAT:ready' then markReady(); return end
     local payload = t:match('^DRIVECHAT:(.+)$')
@@ -2491,31 +2513,54 @@ local __dcOk, DriveChat = pcall(function()
   -- CSP 0.3.0 غيّر طبقة الويب (CEF)؛ نحمّل المتصفح بأمان — لو فشل ما ينهار السكربت كله
   -- نجرّب أكثر من مسار للموديول (تحسّباً لتغيّر المسار في 0.3.0)
   local WebBrowser = nil
+  local WBFAIL = {}   -- سبب فشل كل مسار — يطلع باللوق عشان نعرف بالضبط وش تغيّر بأي نسخة CSP
   do
-    local paths = { 'shared/web/browser', 'shared/webbrowser', 'shared/web/webview', 'web/browser' }
+    -- كل مسار محتمل نعرفه لحد الآن. لو فيه نسخة CSP جديدة (preview545+) تغيّر فيها المسار،
+    -- زودّ القائمة هنا بدل ما تدوّر بمكان ثاني — هذا المكان الوحيد اللي يحدد كيف نحمّل المتصفح.
+    local paths = {
+      'shared/web/browser', 'shared/webbrowser', 'shared/web/webview', 'web/browser',
+      'shared/ui/webbrowser', 'shared/browser', 'shared/web',
+    }
     for _, p in ipairs(paths) do
       local ok, mod = pcall(require, p)
       if ok and type(mod) ~= 'nil' then
         WebBrowser = mod
         ac.log('[DRIVE CHAT] WebBrowser loaded from: ' .. p)
         break
+      else
+        WBFAIL[#WBFAIL + 1] = p .. ' -> ' .. tostring(mod)
       end
     end
     if not WebBrowser then
-      ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths (CSP 0.3.0?) — chat browser disabled')
+      local pv = 'n/a'
+      pcall(function() pv = tostring(ac.getPatchVersionCode()) end)
+      ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths — chat browser disabled — CSP patch code: ' .. pv)
+      for _, line in ipairs(WBFAIL) do ac.log('[DRIVE CHAT]   ' .. line) end
     end
   end
   -- ننشئ المتصفح مرة وحدة بحجم ثابت (نفس نمط IDDL بالحرف — pcall واحد، بدون رجوع/إعادة بناء)
+  -- الموديول نفسه قد يتحمّل بنجاح (require) لكن الإنشاء (constructor) أو navigate/onReceive
+  -- تفشل لسبب ثاني (توقيع API تغيّر، CEF ما جهز وقتها، إلخ) — نسجّل أي خطأ هنا صراحة
+  -- بدل ما يبتلعه pcall بصمت، عشان نعرف بالضبط وين يوقف بالضبط.
   if WebBrowser then
-    pcall(function()
+    local bok, berr = pcall(function()
       S.browser = WebBrowser({ size = vec2(CHAT_W, CHAT_H), backgroundColor = rgbm(0, 0, 0, 0) })
+      ac.log('[DRIVE CHAT] browser instance created: ' .. tostring(S.browser))
       S.lastNav = 0
       S.browser:navigate(CHAT_URL)
+      ac.log('[DRIVE CHAT] browser:navigate() called OK')
       S.browser:onReceive('Drivechat', function(self, data)
         if type(data) == 'string' then handleRaw(data) end
       end)
       S.browser:onTitleChange(function(self, title) handleTitle(title) end)
+      ac.log('[DRIVE CHAT] browser onReceive/onTitleChange hooked OK')
     end)
+    if not bok then
+      -- نسجّل الخطأ بس ما نصفّر S.browser هنا — لو نجح إنشاء الكائن (السطر الأول) وفشل
+      -- شي بعده (navigate/onReceive)، الأصلي كان يخلي S.browser زي ما هو (نصف شغال
+      -- أحسن من ولا شي). نفس السلوك الأصلي — بس الحين نعرف السبب من اللوق.
+      ac.log('[DRIVE CHAT] browser setup step FAILED (see line above for how far it got): ' .. tostring(berr))
+    end
   end
 
   -- ===== إخفاء شات CSP المدمج (نفس طريقة IDDL بالحرف) =====
@@ -2906,6 +2951,11 @@ local __dcOk, DriveChat = pcall(function()
     -- نافذة الشات (الشات مفتوح)
     if S.open and not S.browser then S.open = false; S.wantsKbd = false end
     if S.open and S.browser then
+      if not S.__drawLogged then
+        S.__drawLogged = true
+        ac.log('[DRIVE CHAT] draw(): entering open-window branch, S.W=' .. tostring(S.W) .. ' S.H=' .. tostring(S.H)
+          .. ' sim.windowWidth=' .. tostring(sim.windowWidth) .. ' sim.windowHeight=' .. tostring(sim.windowHeight))
+      end
       if not S.pos then
         if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
           S.pos = vec2(cStor.dc_posX, cStor.dc_posY)
@@ -2936,6 +2986,10 @@ local __dcOk, DriveChat = pcall(function()
       end
 
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
+        if not S.__winCbLogged then
+          S.__winCbLogged = true
+          ac.log('[DRIVE CHAT] transparentWindow callback fired — pos=' .. tostring(S.pos))
+        end
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
         if not S.dragging then
           local uis = ac.getUI()

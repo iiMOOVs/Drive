@@ -3323,7 +3323,7 @@ local function drawChatHint()
     ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
     drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
     ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
-    dwBox("C اضغط هنا او ", 13.5 * k,
+    dwBox("اضغط هنا او xC", 13.5 * k,
       92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
     if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
     if clicked then DriveChat.toggle() end

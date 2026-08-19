@@ -2321,6 +2321,7 @@ local __dcOk, DriveChat = pcall(function()
       return
     end
     S.open = true
+    ac.log('[DRIVE CHAT] openChat(): S.open=true, S.ready=' .. tostring(S.ready))
     if S.browser and S.ready then jsend('dcFocus', true) end
   end
   local function closeChat()
@@ -2334,6 +2335,7 @@ local __dcOk, DriveChat = pcall(function()
     S.lastOk = S.clock
     S.acked = false
     S.readyAt = S.clock
+    ac.log('[DRIVE CHAT] markReady(): page said "ready" — JS handshake OK')
   end
 
   -- ===== أوامر الصفحة (JS -> Lua) =====
@@ -2476,7 +2478,12 @@ local __dcOk, DriveChat = pcall(function()
 
   -- كل أمر من الصفحة يجي بصيغة "<رقم>:<الأمر>" وعلى أكثر من قناة (sendAsync + عنوان الصفحة)
   -- ندمجها هنا مع منع التكرار — نفس الرقم ينفذ مرة وحدة فقط مهما تكرر وصوله
+  local __rawSeen = false
   local function handleRaw(payload)
+    if not __rawSeen then
+      __rawSeen = true
+      ac.log('[DRIVE CHAT] handleRaw(): first message ever received from the page: ' .. tostring(payload))
+    end
     if type(payload) ~= 'string' or payload == '' then return end
     local seq, cmd = payload:match('^(%d+):(.*)$')
     if seq then
@@ -2488,7 +2495,12 @@ local __dcOk, DriveChat = pcall(function()
       handleData(payload)   -- توافق مع أوامر بدون رقم
     end
   end
+  local __titleSeen = false
   local function handleTitle(t)
+    if not __titleSeen then
+      __titleSeen = true
+      ac.log('[DRIVE CHAT] handleTitle(): first onTitleChange ever fired, title=' .. tostring(t))
+    end
     if type(t) ~= 'string' then return end
     if t == 'DRIVECHAT:ready' then markReady(); return end
     local payload = t:match('^DRIVECHAT:(.+)$')
@@ -2937,6 +2949,11 @@ local __dcOk, DriveChat = pcall(function()
     -- نافذة الشات (الشات مفتوح)
     if S.open and not S.browser then S.open = false; S.wantsKbd = false end
     if S.open and S.browser then
+      if not S.__drawLogged then
+        S.__drawLogged = true
+        ac.log('[DRIVE CHAT] draw(): entering open-window branch, S.W=' .. tostring(S.W) .. ' S.H=' .. tostring(S.H)
+          .. ' sim.windowWidth=' .. tostring(sim.windowWidth) .. ' sim.windowHeight=' .. tostring(sim.windowHeight))
+      end
       if not S.pos then
         if cStor.dc_posX >= 0 and cStor.dc_posY >= 0 then
           S.pos = vec2(cStor.dc_posX, cStor.dc_posY)
@@ -2967,6 +2984,10 @@ local __dcOk, DriveChat = pcall(function()
       end
 
       ui.transparentWindow('driveChatBrowser', S.pos, vec2(S.W, S.H), true, true, function()
+        if not S.__winCbLogged then
+          S.__winCbLogged = true
+          ac.log('[DRIVE CHAT] transparentWindow callback fired — pos=' .. tostring(S.pos))
+        end
         S.browser:draw(vec2(0, 0), vec2(S.W, S.H), true)
         if not S.dragging then
           local uis = ac.getUI()

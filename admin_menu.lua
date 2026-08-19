@@ -9,7 +9,7 @@ local allowedAdmins = {
     ["76561198964066927"] = true, -- 8NOOZ
     ["76561199549744707"] = true, -- Moov secnod account
     ["76561199163191039"] = true, -- Abo S3D
-
+    ["76561198410172040"] = true, -- v9BR
     ["76561198803343822"] = true, -- rshrsh
     ["76561199263273952"] = true, -- vBrns
     ["76561199808618250"] = true, -- Abo Reham

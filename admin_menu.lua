@@ -815,23 +815,27 @@ function script.update(dt)
   -- يكشف شات ملف اللاعب (يضبط حالة الإدخال UI) — يوقف شدّات الأدمن وأنت تكتب في الشات
   if type(ac.getCurrentInputMethod) == "function" and ac.getCurrentInputMethod() == ac.UserInputMode.UI then canCap = false end
 
-  -- 🔒 فتح/إغلاق لوحة الإدمن نفسها: للأدمن فقط. (مفاتيح الشدة تحت مقصودة تشتغل
-  -- لكل اللاعبين — الأدمن يحدد نقطة التجمع من لوحته، واللاعبين يتيليبورتون لها بالمفتاح)
-  if isAdmin then
-    local ckn = canCap and ui.keyboardButtonDown(CLOSE_KEY)
-    if ckn and not prevCloseKey then panelOpen = not panelOpen end
-    prevCloseKey = ckn
-  end
+  local ckn = canCap and ui.keyboardButtonDown(CLOSE_KEY)
+  if ckn and not prevCloseKey then panelOpen = not panelOpen end
+  prevCloseKey = ckn
 
   if fastCooldownTimer > 0 then fastCooldownTimer = fastCooldownTimer - dt end
   if radarTimer > 0 then radarTimer = math.max(0, radarTimer - dt) end
   if massTimer  > 0 then massTimer  = math.max(0, massTimer - dt) end
   if soundHold  > 0 then soundHold  = math.max(0, soundHold - dt) end
 
-  -- ملاحظة: مفاتيح الشدة (T/U/O/K/F/B) انتقلت لملف الشات (player_menu.lua) —
-  -- كانت هنا ما تقدر تكتشف "الشات مفتوح" بشكل موثوق لأنها سكربت منفصل (sandbox
-  -- مستقل). استقبال رد السيرفر (!SHADDA_EXEC:) يبقى هنا بالأسفل، يشتغل عادي
-  -- بغض النظر عن أي سكربت أرسل أمر /shadda tp الأصلي.
+  if canCap then
+      for keyName, keyIndex in pairs(SHADDA_KEYS) do
+          local isDown = ui.keyboardButtonDown(keyIndex)
+          if isDown and not shaddaLastStates[keyName] then
+              if keyName == "F" or keyName == "B" then
+                  if fastCooldownTimer <= 0 then ac.sendChatMessage("/shadda tp " .. string.lower(keyName))
+                  else ui.toast(ui.Icons.Warning, string.format("⏳ Wait %.1f s!", fastCooldownTimer)) end
+              else ac.sendChatMessage("/shadda tp " .. string.lower(keyName)) end
+          end
+          shaddaLastStates[keyName] = isDown
+      end
+  end
 end
 
 ---------------------------------------------------------------

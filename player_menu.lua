@@ -1839,7 +1839,7 @@ local menuPrevKey = false
 local __dcOk, DriveChat = pcall(function()
   -- ===== إعدادات =====
   local KEY      = string.byte("C")
-  local CHAT_URL = "https://iimoov.github.io/DriveScripts/chat.html"
+  local CHAT_URL = "https://iimoovs.github.io/Drive/chat_1.html"
   -- ديسكورد (اختياري — خلّه "" للتعطيل):
   local ADMIN_WEBHOOK   = "https://discord.com/api/webhooks/1536077079446294588/EXaBQ2dv9hJwU8EHRNDxCM6VJZHL42XQfGq9ytBjKefZzhxHCds_DqHMn7LgMED3IESH"   -- ويب هوك روم «تواصل مع الإدارة» (زر 📨 داخل الشات)
   local CHATLOG_WEBHOOK = "https://discord.com/api/webhooks/1536076922402902087/rNy5tdYAdkRS7baBkKu0sb56nowE5TfpueIG2JgitqBF9_z7vNXbpUcsVCq7uwsauVQ_"   -- ويب هوك روم مراقبة الشات (كل رسالة يرسلها اللاعب توصل هناك)

@@ -428,6 +428,7 @@ end
 local function openClanDetails(name)
   S.clanView = { loading = true, name = name }
   S.clanOpen = true
+  S.clanJustOpened = true
   clanFetchDetails(name)
 end
 
@@ -855,7 +856,8 @@ local function drawLogBubble(m, mine, w)
   -- فقاعة داخل نافذة الشات الرئيسية (أوسع من فقاعات الإشعارات، بدون تلاشي)
   return drawMsgRow(m, 0, w, 0, 1)
 end
-local function renderMsgList(id, w, h, list, myPredicate, onOpenProfile, forceScrollBottom)
+local function renderMsgList(id, x, y, w, h, list, myPredicate, onOpenProfile, forceScrollBottom)
+  ui.setCursor(vec2(x, y))
   ui.childWindow(id, vec2(w, h), function()
     local innerW = w - 16
     local yy = 6
@@ -902,6 +904,7 @@ local function drawMemberSidebar(x, y, w, h)
     return (a.name or "") < (b.name or "")
   end)
   local q = (S.memberSearch or ""):lower()
+  ui.setCursor(vec2(x + 6, y + 64))
   ui.childWindow("##mlistc", vec2(w - 12, h - 74), function()
     local yy = 4
     for _, m in ipairs(sorted) do
@@ -917,10 +920,13 @@ local function drawMemberSidebar(x, y, w, h)
         local subtitle = m.isMe and "أنت" or (m.speed and ("💨 " .. tostring(m.speed) .. " كم/س") or "متصل")
         local nameX = 4 + 48
         dwLeft2(m.name or "?", 14, nameX, yy + 3, w - 120, 18, ACC)
-        local bw = drawBadge(nameX, yy + 3, m.rank, m.rankColor)
+        -- الشارة لازم تُرسم بعد نهاية اسم اللاعب فعلياً (نقيس عرض النص أولاً)
+        -- وإلا تتراكب فوق الاسم — نفس نمط علامة التوثيق (✓) في drawMsgRow.
+        local nameW = math.min(w - 170, math.ceil(ui.measureDWriteText(m.name or "?", 14, 400).x) + 6)
+        local bw = drawBadge(nameX + nameW, yy + 3, m.rank, m.rankColor)
         dwLeft2(subtitle, 11.5, nameX, yy + 23, w - 120, 16, CDm)
         if m.discord then dwLeft2("🔗", 12, w - 44, yy + 12, 20, 18, rgbm(0.4,0.7,1,1)) end
-        if clicked then S.profileOpen = true; S.profileName = m.name; S.descLoadedFor = nil end
+        if clicked then S.profileOpen = true; S.profileName = m.name; S.descLoadedFor = nil; S.profileJustOpened = true end
         yy = yy + 50
       end
     end
@@ -962,8 +968,8 @@ local function drawChannelSidebar(x, y, w, h)
     S.dmSearch = ns
     listY = listY + 30; listH = listH - 30 - 40
   end
+  ui.setCursor(vec2(x + 8, listY))
   ui.childWindow("##chlistc", vec2(w - 16, listH), function()
-    ui.setCursor(vec2(8, listY - (y)))
     if S.activeChannel == "general" then
       ui.drawRectFilled(vec2(4, 4), vec2(w - 24, 60), rgbm(ACC.r, ACC.g, ACC.b, 0.14), 10)
       dwLeft2("دردشة عامة", 14, 46, 12, w - 60, 20, CW)
@@ -982,6 +988,7 @@ local function drawChannelSidebar(x, y, w, h)
       end
     elseif S.activeChannel == "dm" then
       if S.activeDmWith then
+        ui.setCursor(vec2(4, 4))
         local clicked = ui.invisibleButton("##dmback", vec2(w - 24, 46))
         ui.drawRectFilled(vec2(4, 4), vec2(w - 24, 50), rgbm(ACC.r, ACC.g, ACC.b, 0.14), 10)
         dwLeft2("◀ " .. S.activeDmWith, 13.5, 12, 8, w - 40, 20, CW)
@@ -1012,6 +1019,7 @@ local function drawChannelSidebar(x, y, w, h)
         end
         if #others > 0 then
           for _, c in ipairs(others) do
+            ui.setCursor(vec2(4, yy))
             local clicked = ui.invisibleButton("##dmrow" .. c.withName, vec2(w - 24, 46))
             local hover = ui.itemHovered()
             if hover then ui.drawRectFilled(vec2(4, yy), vec2(w - 24, yy + 44), rgbm(1,1,1,0.05), 9); ui.setMouseCursor(ui.MouseCursor.Hand) end
@@ -1031,7 +1039,7 @@ local function drawChannelSidebar(x, y, w, h)
   end)
   if S.activeChannel == "dm" and not S.activeDmWith then
     if textButton("##newconv", x + 10, y + h - 38, w - 20, 30, "+ محادثة جديدة", false) then
-      S.newConvOpen = true; S.newConvSearch = ""
+      S.newConvOpen = true; S.newConvSearch = ""; S.newConvJustOpened = true
     end
   end
 end
@@ -1064,6 +1072,7 @@ local function drawPickerPanel(x, y, w)
   local py = y - ph - 6
   ui.drawRectFilled(vec2(x, py), vec2(x + w, py + ph), rgbm(0.06, 0.058, 0.075, 0.98), 12)
   ui.drawRect(vec2(x, py), vec2(x + w, py + ph), rgbm(ACC.r, ACC.g, ACC.b, 0.4), 12, nil, 1)
+  ui.setCursor(vec2(x + 6, py + 5))
   ui.childWindow("##pickerc", vec2(w - 12, ph - 10), function()
     if S.activePicker == "emoji" then
       local cols = 11; local cw = (w - 24) / cols
@@ -1183,6 +1192,16 @@ end
 local function drawModalBackdrop(winW, winH)
   ui.drawRectFilled(vec2(0, 0), vec2(winW, winH), rgbm(0, 0, 0, 0.55), 0)
 end
+-- الكليك اللي فتح مودال ما لازم يقفله بنفس الفريم (نفس ui.mouseClicked() يُقرأ
+-- مرتين: مرة بزر الفتح، ومرة بفحص "كليك برا البطاقة" — بدون هالحارس كانت كل
+-- المودالات (إدارة/كلان/بروفايل/محادثة جديدة) تفتح وتقفل بنفس الفريم فوراً).
+-- الأعلام (S.xxxJustOpened) تُضبط true مباشرة (تعيين حقل، بدون دالة) بكل مكان
+-- يفتح فيه المودال — بعضها معرّف بالملف قبل هالسكشن، فتفادينا الاعتماد على
+-- استدعاء دالة معرّفة لاحقاً (upvalue ما يكون جاهز بعد بوقت التعريف بلغة Lua).
+local function modalClickedOutside(key, mp, cx, cy, cw, ch)
+  if S[key .. "JustOpened"] then S[key .. "JustOpened"] = false; return false end
+  return ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch))
+end
 local function drawProfileModal(winW, winH)
   if not S.profileOpen then return end
   local m = memberByName(S.profileName)
@@ -1229,12 +1248,14 @@ local function drawProfileModal(winW, winH)
   by = by + 6
   dwLeft2("📝 الوصف", 12, cx + 18, by, cw - 36, 18, CDm); by = by + 20
   if m.isMe and m.discord then
+    -- لازم نحدّث S.descInput من وصف العضو قبل ما نرسم صندوق الإدخال، وإلا
+    -- أول فريم بعد فتح البروفايل يعرض النص القديم (من عضو/فتحة سابقة) لحظة وحدة.
+    if S.descLoadedFor ~= m.name then S.descInput = m.desc or ""; S.descLoadedFor = m.name end
     ui.setCursor(vec2(cx + 18, by))
     local nd = ui.inputText("اكتب وصفك (١٢٠ حرف)...##descinput", S.descInput, ui.InputTextFlags.Placeholder, vec2(cw - 36, 44))
     if #nd > 120 then nd = nd:sub(1, 120) end
     S.descInput = nd
     by = by + 50
-    if S.descLoadedFor ~= m.name then S.descInput = m.desc or ""; S.descLoadedFor = m.name end
     if textButton("##savedesc", cx + 18, by, cw - 36, 30, "حفظ الوصف", true) then sendDescription(S.descInput) end
     by = by + 36
   else
@@ -1260,7 +1281,7 @@ local function drawProfileModal(winW, winH)
   if textButton("##profclose", cx + 18, by, cw - 36, 30, "إغلاق", false) then S.profileOpen = false end
   -- إغلاق بالنقر خارج البطاقة
   local mp = ui.mouseLocalPos()
-  if ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch)) then
+  if modalClickedOutside("profile", mp, cx, cy, cw, ch) then
     S.profileOpen = false
   end
 end
@@ -1290,7 +1311,7 @@ local function drawAdminModal(winW, winH)
     S.adminOpen = false; S.adminText = ""
   end
   local mp = ui.mouseLocalPos()
-  if ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch)) then
+  if modalClickedOutside("admin", mp, cx, cy, cw, ch) then
     S.adminOpen = false
   end
 end
@@ -1311,10 +1332,12 @@ local function drawNewConvModal(winW, winH)
   local ns = ui.inputText("ابحث عن عضو...##newconvsearch", S.newConvSearch, ui.InputTextFlags.Placeholder)
   S.newConvSearch = ns
   local q = (S.newConvSearch or ""):lower()
+  ui.setCursor(vec2(cx + 18, cy + 108))
   ui.childWindow("##ncl", vec2(cw - 36, ch - 118), function()
     local yy = 4
     for _, m in ipairs(S.members) do
       if not m.isMe and (q == "" or (m.name or ""):lower():find(q, 1, true)) then
+        ui.setCursor(vec2(0, yy))
         local clicked = ui.invisibleButton("##ncrow" .. m.name, vec2(cw - 52, 42))
         local hover = ui.itemHovered()
         if hover then ui.drawRectFilled(vec2(0, yy), vec2(cw - 52, yy + 40), rgbm(1,1,1,0.06), 8); ui.setMouseCursor(ui.MouseCursor.Hand) end
@@ -1326,7 +1349,7 @@ local function drawNewConvModal(winW, winH)
     end
   end)
   local mp = ui.mouseLocalPos()
-  if ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch)) then
+  if modalClickedOutside("newConv", mp, cx, cy, cw, ch) then
     S.newConvOpen = false
   end
 end
@@ -1388,6 +1411,7 @@ local function drawClanModal(winW, winH)
     S.clanOpen = false; S.clanView = nil; S.clanScreen = "main"; S.clanConfirm = nil
   end
 
+  ui.setCursor(vec2(cx + 10, cy + 62))
   ui.childWindow("##clanbodyc", vec2(cw - 20, ch - 66), function()
     local y = 6
 
@@ -1646,14 +1670,19 @@ local function drawClanModal(winW, winH)
     end
     y = drawClanConfirmBar(0, y, cw)
   end)
-  local mp = ui.mouseLocalPos()
-  if ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch)) and not S.clanConfirm then
-    S.clanOpen = false; S.clanView = nil; S.clanScreen = "main"
+  if S.clanJustOpened then
+    S.clanJustOpened = false -- الكليك اللي فتح النافذة هذا الفريم — ما نقفلها بنفس الفريم
+  else
+    local mp = ui.mouseLocalPos()
+    if ui.mouseClicked(ui.MouseButton.Left) and not inRect2(mp, vec2(cx, cy), vec2(cx + cw, cy + ch)) and not S.clanConfirm then
+      S.clanOpen = false; S.clanView = nil; S.clanScreen = "main"
+    end
   end
 end
 local function openClanPanel()
   S.clanPickColor = "#F7820E"; S.clanView = nil; S.clanScreen = "main"; S.myClanLoaded = false
   S.clanOpen = true
+  S.clanJustOpened = true
   clanFetchMine(); clanFetchEmojis()
 end
 
@@ -1708,26 +1737,31 @@ local function drawChatWindow()
     ui.drawRect(vec2(0, 0), vec2(W, H), rgbm(ACC.r, ACC.g, ACC.b, 0.35), 18, nil, 1)
 
     -- ===== الهيدر =====
+    -- مهم: كل الأزرار/السلايدر لازم تكون بأول 300px (يسار) — منطقة سحب النافذة
+    -- تبدأ من x=300 (تحت)، ونفس القاعدة اللي كانت بالنسخة القديمة (CEF) لتفادي
+    -- إن الضغط على زر يُقرأ كبداية سحب للنافذة بنفس الوقت.
     ui.drawRectFilled(vec2(0, 0), vec2(W, 56), ACC, 18)
     ui.drawRectFilled(vec2(0, 28), vec2(W, 56), ACC, 0)
-    dwLeft2("DRIVE", 20, 16, 8, 90, 40, rgbm(0.09,0.06,0.02,1))
-    dwLeft2("الشات 💬", 15, 96, 14, 100, 30, rgbm(0.10,0.06,0.02,1))
-    ui.setCursor(vec2(210, 14)); ui.setNextItemWidth(90)
-    local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 35, 100, "%d%%")
-    if chop then cStor.dc_opacity = nop / 100 end
-    local bx = W - 46
-    if iconButton("##xbtn", bx, 10, 36, 36, "✕", false) then closeChat() end
-    bx = bx - 44
-    if iconButton("##notifbtn", bx, 10, 36, 36, cStor.dc_notif and "🔔" or "🔕", cStor.dc_notif) then
+    local bx = 8
+    if iconButton("##xbtn", bx, 10, 34, 36, "✕", false) then closeChat() end
+    bx = bx + 40
+    if iconButton("##notifbtn", bx, 10, 34, 36, cStor.dc_notif and "🔔" or "🔕", cStor.dc_notif) then
       cStor.dc_notif = not cStor.dc_notif
       toast(cStor.dc_notif and "فقاعات الإشعارات: تشتغل لما تسكّر الشات 🔔" or "فقاعات الإشعارات: مقفلة 🔕")
     end
-    bx = bx - 44
-    if iconButton("##clanbtn", bx, 10, 36, 36, "🛡️", S.clanOpen) then openClanPanel() end
-    bx = bx - 44
+    bx = bx + 40
+    if iconButton("##clanbtn", bx, 10, 34, 36, "🛡️", S.clanOpen) then openClanPanel() end
+    bx = bx + 40
     if ADMIN_WEBHOOK ~= "" then
-      if iconButton("##adminbtn", bx, 10, 36, 36, "📨", S.adminOpen) then S.adminOpen = true end
+      if iconButton("##adminbtn", bx, 10, 34, 36, "📨", S.adminOpen) then S.adminOpen = true; S.adminJustOpened = true end
+      bx = bx + 40
     end
+    ui.setCursor(vec2(bx + 8, 16)); ui.setNextItemWidth(math.max(70, 292 - bx))
+    local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 35, 100, "%d%%")
+    if chop then cStor.dc_opacity = nop / 100 end
+    -- الشعار/العنوان بمنطقة السحب (يمين) — نص فقط، بدون عناصر تفاعلية
+    dwLeft2("DRIVE", 20, W - 210, 8, 90, 40, rgbm(0.09,0.06,0.02,1))
+    dwLeft2("الشات 💬", 15, W - 118, 14, 110, 30, rgbm(0.10,0.06,0.02,1))
 
     -- ===== شريط التلميح =====
     dwBox2("للإرسال ENTER · للإغلاق ESC أو ✕ · اضغط أي عضو لعرض حسابه · اكتب /link لربط الديسكورد", 11.5, 0, 60, W, 18, CDm)
@@ -1747,19 +1781,18 @@ local function drawChatWindow()
     -- سجل الرسائل الأوسط حسب القناة النشطة
     ui.drawRectFilled(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(0.09, 0.086, 0.106, 1), 12)
     ui.drawRect(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(1,1,1,0.06), 12, nil, 1)
-    ui.setCursor(vec2(midX + 6, bodyY + 6))
     if S.activeChannel == "general" then
       local fsb = S.newGeneral; S.newGeneral = false
-      renderMsgList("##genlog", midW - 12, bodyH - 12, S.log, function(m) return m.mine end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil end, fsb)
+      renderMsgList("##genlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.log, function(m) return m.mine end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
     elseif S.activeChannel == "clan" then
       local fsb = S.newClan; S.newClan = false
-      renderMsgList("##clanlog", midW - 12, bodyH - 12, S.clanLog, function(m) return m.name == myName() end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil end, fsb)
+      renderMsgList("##clanlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.clanLog, function(m) return m.name == myName() end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
     else
       if S.activeDmWith then
         local fsb = S.newDm; S.newDm = false
-        renderMsgList("##dmlog", midW - 12, bodyH - 12, S.dmMsgs[S.activeDmWith] or {}, function(m) return m.name == myName() end, nil, fsb)
+        renderMsgList("##dmlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.dmMsgs[S.activeDmWith] or {}, function(m) return m.name == myName() end, nil, fsb)
       else
-        dwBox2("اختر محادثة من القائمة →", 13, 0, bodyH / 2 - 12, midW, 24, CDm)
+        dwBox2("اختر محادثة من القائمة →", 13, midX, bodyY + bodyH / 2 - 12, midW, 24, CDm)
       end
     end
 
@@ -1805,11 +1838,11 @@ local function drawChatWindow()
     drawNewConvModal(W, H)
     drawClanModal(W, H)
     drawToast(W, H)
-
-    -- ===== الإدخال/الفوكس =====
-    if not S.dragging then
-      local kb = ui.captureKeyboard(true, true)
-    end
+    -- ملاحظة: لا نستدعي ui.captureKeyboard() هنا عمداً. كانت موجودة بالنسخة
+    -- القديمة عشان تلتقط ضغطات المفاتيح يدوياً وتمررها لمتصفح CEF (اللي ما
+    -- عنده وصول تلقائي لدخل الكيبورد). حقول ui.inputText الأصلية تتولى فوكس/كتابة
+    -- الكيبورد بنفسها عبر ImGui — استدعاء captureKeyboard هنا كان يسحب التركيز
+    -- منها ويسبب مشاكل كتابة (حروف تضيع/ما تنكتب) بصندوق الرسالة وكل الحقول.
   end)
 
   if cClicked and not S.dragging and not overlayActive and not inRect2(clp, vec2(0, 0), vec2(S.W, S.H)) then
@@ -1919,7 +1952,10 @@ script.update = function(dt)
   else
     S.prevKey = false
   end
-  chatTyping = S.open
+  -- ملاحظة: ما نضبط متغير global زي "chatTyping" هنا — كان مفيد بالنسخة
+  -- القديمة (سكربت واحد مدمج مع player_menu.lua)، لكن كل سكربت SCRIPT_X منفصل
+  -- يشتغل بـ Lua VM معزولة تماماً؛ ضبط global هنا ما ينوصل لملف player_menu.lua
+  -- إطلاقاً (كان كود ميت يعطي انطباع كاذب إن فيه تزامن بين الملفين).
 
   if S.open then
     if not S.inputSaved then

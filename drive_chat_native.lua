@@ -48,8 +48,13 @@ local CHAT_W, CHAT_H = 980, 660
 local LOG_MAX = 60
 
 --=================================================================
--- [2] الستيكرز / GIF / الإيموجي / الجمل الجاهزة
+-- [2] الستيكرز / الإيموجي / الجمل الجاهزة
 --=================================================================
+-- ملاحظة: شلنا تبويب الـ GIF المتحرك من المنتقي عمداً — عارض الصور الأصلي
+-- بـ CSP (ui.decodeImage/ui.drawImage) يعرض صور ثابتة (JPG/PNG) بس، ما يشغّل
+-- GIF متحرك (هذا يحتاج متصفح CEF حقيقي زي ما تسوي سيرفرات ثانية، وإحنا تركنا
+-- ذاك الخيار بالتصميم من البداية عشان قيود CSP على الـ Server Scripts). فبدل
+-- ما يطلع مربع رمادي ميت دايماً كنا نخفيه بدل ما نسيبه "مكسور".
 local STICKERS = {
   "https://pbs.twimg.com/media/G7gyUn4WMAAafxA.jpg",
   "https://i1.sndcdn.com/artworks-kpz9WCWcGJ9AFL58-10R0yA-t500x500.jpg",
@@ -68,16 +73,8 @@ local STICKERS = {
   "https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcSFzD9EzBhZxb2sWSCuS2tLgObdTqGoZSgUMHShhQbkiA&shttps%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%3Fq=tbn%3AANd9GcSFzD9EzBhZxb2sWSCuS2tLgObdTqGoZSgUMHShhQbkiA&s=",
   "https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcQ54uKUXaNz07fJcjT7r9NlIbfGSiUWYtMwnI7d-vfM3gLKD1TuCXjMVd4&s=10",
 }
-local GIFS = {
-  "https://media.tenor.com/_IBOBUwQ8_sAAAAM/shabab-albomb.gif",
-  "https://media.tenor.com/ps7WyW8M2K0AAAAM/yypppoo.gif",
-  "https://i.makeagif.com/media/2-23-2024/3VNC5f.gif",
-  "https://media.tenor.com/leAEu72bILgAAAAM/ekoi-ekoi-dancekid.gif",
-  "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRuEGI17Qtt9cAkEz9KgHgGt1cQvbF4XWXSwViZmrtNGw&s=10",
-}
 local ALLPICS, PICIDX = {}, {}
 for _, u in ipairs(STICKERS) do ALLPICS[#ALLPICS + 1] = u end
-for _, u in ipairs(GIFS)     do ALLPICS[#ALLPICS + 1] = u end
 for i, u in ipairs(ALLPICS)  do PICIDX[u] = i end
 
 local EMOJIS = {
@@ -767,6 +764,7 @@ local function drawMsgRow(m, x, areaW, yy, a)
     ui.popDWriteFont()
     bx2 = rightEdge; bx1 = bx2 - bubW
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), rgbm(0.15, 0.15, 0.17, 0.96 * a), 12)
+    ui.drawRect(vec2(bx1, bubY), vec2(bx2, bubY + bubH), rgbm(ACC.r, ACC.g, ACC.b, 0.3 * a), 12, nil, 1)
     ui.drawRectFilled(vec2(bx2 - 3, bubY + 4), vec2(bx2, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.95 * a), 2)
   else
     drawAvatar(x + AVR + 2, avcy, AVR, m)
@@ -780,6 +778,7 @@ local function drawMsgRow(m, x, areaW, yy, a)
     end
     bx1 = nameX; bx2 = bx1 + bubW
     ui.drawRectFilled(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(0.11, 0.115, 0.14, 0.96 * a) or rgbm(0.17, 0.17, 0.19, 0.96 * a), 12)
+    ui.drawRect(vec2(bx1, bubY), vec2(bx2, bubY + bubH), m.srv and rgbm(ACC.r, ACC.g, ACC.b, 0.35 * a) or rgbm(1, 1, 1, 0.07 * a), 12, nil, 1)
     if m.srv then ui.drawRectFilled(vec2(bx1, bubY + 4), vec2(bx1 + 3, bubY + bubH - 4), rgbm(ACC.r, ACC.g, ACC.b, 0.9 * a), 2) end
   end
   if m.sticker then
@@ -890,8 +889,9 @@ local function rankOrderOf(r)
   elseif r and r ~= "" then return 3 else return 4 end
 end
 local function drawMemberSidebar(x, y, w, h)
-  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.067, 0.063, 0.082, 1), 12)
-  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06), 12, nil, 1)
+  local bga = S.bgAlpha or 1
+  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.067, 0.063, 0.082, bga), 12)
+  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06 * bga), 12, nil, 1)
   dwLeft2("👥 الأعضاء (" .. #S.members .. ")", 15, x + 14, y + 10, w - 28, 22, CW)
   -- بحث
   ui.setCursor(vec2(x + 12, y + 36))
@@ -955,8 +955,9 @@ local function switchChannel(ch)
   S.wantFocusInput = true
 end
 local function drawChannelSidebar(x, y, w, h)
-  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.067, 0.063, 0.082, 1), 12)
-  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06), 12, nil, 1)
+  local bga = S.bgAlpha or 1
+  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.067, 0.063, 0.082, bga), 12)
+  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06 * bga), 12, nil, 1)
   local tw = (w - 24) / 3
   if iconButton("##chtabg", x + 8, y + 10, tw, 40, "🌐 عامة", S.activeChannel == "general") then switchChannel("general") end
   if iconButton("##chtabc", x + 12 + tw, y + 10, tw, 40, "🛡️ الكلان", S.activeChannel == "clan") then switchChannel("clan") end
@@ -1053,30 +1054,33 @@ end
 local function sendStickerActive(url)
   if S.activeChannel == "clan" then
     if not S.myClan then toast("انضم لكلان أول"); return end
-    S.clanMaxId = S.clanMaxId + 1
-    addClanMsg({ id = S.clanMaxId, name = myName(), sticker = url, t = S.clock })
+    -- بدون إضافة محلية بمعرّف وهمي — نفس سبب منع التكرار بالرسائل النصية.
     clanSendChat(nil, url)
   elseif S.activeChannel == "dm" then
     if not S.activeDmWith then toast("افتح محادثة أول"); return end
-    local nid = (S.dmLastId[S.activeDmWith] or 0) + 1
-    addDmMsg(S.activeDmWith, { id = nid, name = myName(), sticker = url, t = S.clock })
     dmSend(S.activeDmWith, nil, url)
   else
     ownMsg(nil, url)
     local idx = PICIDX[url]
     if idx then pcall(function() ac.sendChatMessage('$STICK:' .. idx) end) end
-    relayChatLog('[Sticker/GIF]')
+    relayChatLog('[ملصق]')
   end
   S.activePicker = nil
 end
+local PICKER_TITLES = { emoji = "الإيموجي", stick = "الملصقات", phr = "جمل جاهزة" }
 local function drawPickerPanel(x, y, w)
   if not S.activePicker then return 0 end
   local ph = 170
   local py = y - ph - 6
   ui.drawRectFilled(vec2(x, py), vec2(x + w, py + ph), rgbm(0.06, 0.058, 0.075, 0.98), 12)
   ui.drawRect(vec2(x, py), vec2(x + w, py + ph), rgbm(ACC.r, ACC.g, ACC.b, 0.4), 12, nil, 1)
-  ui.setCursor(vec2(x + 6, py + 5))
-  ui.childWindow("##pickerc", vec2(w - 12, ph - 10), function()
+  -- شريط علوي ثابت (خارج منطقة التمرير) فيه عنوان + زر إغلاق صريح — قبل كذا
+  -- ما كان فيه أي طريقة تقفل المنتقي غير إنك ترسل شي منه أو تضغط نفس أيقونة
+  -- الفوتر مرة ثانية (غير واضحة للمستخدم).
+  dwLeft2(PICKER_TITLES[S.activePicker] or "", 12.5, x + 14, py + 7, w - 60, 18, CDm)
+  if textButton("##pickerclose", x + w - 36, py + 5, 28, 22, "✕", false) then S.activePicker = nil end
+  ui.setCursor(vec2(x + 6, py + 31))
+  ui.childWindow("##pickerc", vec2(w - 12, ph - 37), function()
     if S.activePicker == "emoji" then
       local cols = 11; local cw = (w - 24) / cols
       local cx, cy = 4, 4
@@ -1090,12 +1094,11 @@ local function drawPickerPanel(x, y, w)
         end
         dwBox2(e, 18, xx, cy, cw - 4, 26)
       end
-    elseif S.activePicker == "stick" or S.activePicker == "gif" then
-      local list = S.activePicker == "stick" and STICKERS or GIFS
-      local cols = S.activePicker == "stick" and 5 or 3
+    elseif S.activePicker == "stick" then
+      local cols = 5
       local cw = (w - 24) / cols
       local cy = 4
-      for i, u in ipairs(list) do
+      for i, u in ipairs(STICKERS) do
         local col = (i - 1) % cols
         if col == 0 and i > 1 then cy = cy + cw + 4 end
         local xx = 4 + col * cw
@@ -1120,10 +1123,9 @@ local function drawPickerPanel(x, y, w)
           if S.activeChannel == "general" then
             ownMsg(t, nil); pcall(function() ac.sendChatMessage(t) end); relayChatLog(t)
           elseif S.activeChannel == "clan" and S.myClan then
-            S.clanMaxId = S.clanMaxId + 1; addClanMsg({id=S.clanMaxId, name=myName(), text=t, t=S.clock}); clanSendChat(t, nil)
+            clanSendChat(t, nil)
           elseif S.activeChannel == "dm" and S.activeDmWith then
-            local nid = (S.dmLastId[S.activeDmWith] or 0) + 1
-            addDmMsg(S.activeDmWith, {id=nid, name=myName(), text=t, t=S.clock}); dmSend(S.activeDmWith, t, nil)
+            dmSend(S.activeDmWith, t, nil)
           end
           S.activePicker = nil
         end
@@ -1151,15 +1153,15 @@ local function doSendChannel()
   elseif S.activeChannel == "clan" then
     if not S.myClan then toast("انضم لكلان أول")
     else
-      S.clanMaxId = S.clanMaxId + 1
-      addClanMsg({ id = S.clanMaxId, name = myName(), text = t, t = S.clock })
+      -- ما نضيف الرسالة محلياً بمعرّف وهمي (كان يسبب تكرارها لما يوصل نفس
+      -- الرسالة بمعرّفها الحقيقي من السيرفر عبر أول poll بعد الإرسال — تظهر
+      -- مرتين). نعتمد على poll الفوري جوه clanSendChat عشان تظهر بمعرّفها
+      -- الصحيح من أول مرة، بدون تكرار.
       clanSendChat(t, nil)
     end
   elseif S.activeChannel == "dm" then
     if not S.activeDmWith then toast("افتح محادثة أول")
     else
-      local nid = (S.dmLastId[S.activeDmWith] or 0) + 1
-      addDmMsg(S.activeDmWith, { id = nid, name = myName(), text = t, t = S.clock })
       dmSend(S.activeDmWith, t, nil)
     end
   end
@@ -1736,15 +1738,29 @@ local function drawChatWindow()
 
   ui.transparentWindow('driveChatNative', S.pos, vec2(S.W, S.H), true, true, function()
     local W, H = S.W, S.H
-    ui.drawRectFilled(vec2(0, 0), vec2(W, H), rgbm(0.078, 0.075, 0.094, cStor.dc_opacity or 1), 18)
-    ui.drawRect(vec2(0, 0), vec2(W, H), rgbm(ACC.r, ACC.g, ACC.b, 0.35), 18, nil, 1)
+    -- BGA = نسبة شفافية الخلفية (0 = شفافة بالكامل، 1 = معتّمة كاملة) — تتحكم
+    -- بخلفيات اللوحات (السايدبارات/سجل الرسائل/الكانفس) فقط. فقاعات الرسائل
+    -- والنصوص تبقى بعتامتها الأصلية دايماً عشان "الكلام يضل واضح" حتى لو
+    -- الخلفية شفافة كاملة. الهيدر يبقى ثابت (مو خاضع للسلايدر) عشان يضل
+    -- واضح للقراءة ومتوفر كمقبض لسحب النافذة بكل الأحوال.
+    local BGA = cStor.dc_opacity or 1
+    S.bgAlpha = BGA -- متاحة لدوال الرسم الثانية (سايدبار الأعضاء/القنوات) عبر S
+    ui.drawRectFilled(vec2(0, 0), vec2(W, H), rgbm(0.078, 0.075, 0.094, BGA), 18)
+    ui.drawRect(vec2(0, 0), vec2(W, H), rgbm(ACC.r, ACC.g, ACC.b, math.max(0.06, 0.35 * BGA)), 18, nil, 1)
 
     -- ===== الهيدر =====
     -- مهم: كل الأزرار/السلايدر لازم تكون بأول 300px (يسار) — منطقة سحب النافذة
     -- تبدأ من x=300 (تحت)، ونفس القاعدة اللي كانت بالنسخة القديمة (CEF) لتفادي
     -- إن الضغط على زر يُقرأ كبداية سحب للنافذة بنفس الوقت.
-    ui.drawRectFilled(vec2(0, 0), vec2(W, 56), ACC, 18)
-    ui.drawRectFilled(vec2(0, 28), vec2(W, 56), ACC, 0)
+    -- هيدر داكن (بدل الشريط البرتقالي الصريح المسطّح اللي كان يحس اللاعب إنه
+    -- بواجهة قديمة) + خط توهج تدريجي بالأسفل بلون البراند — نفس فكرة الـ glow
+    -- المستخدمة بواجهات الألعاب الحديثة، مبني بس من مستطيلات متراكبة بعتامة
+    -- متدرجة (ما نعتمد على أي دالة تدرّج غير مؤكدة بـ CSP).
+    ui.drawRectFilled(vec2(0, 0), vec2(W, 56), rgbm(0.055, 0.048, 0.062, 1), 18)
+    ui.drawRectFilled(vec2(0, 28), vec2(W, 56), rgbm(0.055, 0.048, 0.062, 1), 0)
+    ui.drawRectFilled(vec2(0, 47), vec2(W, 50), rgbm(ACC.r, ACC.g, ACC.b, 0.16), 0)
+    ui.drawRectFilled(vec2(0, 50), vec2(W, 53), rgbm(ACC.r, ACC.g, ACC.b, 0.4), 0)
+    ui.drawRectFilled(vec2(0, 53), vec2(W, 56), rgbm(ACC.r, ACC.g, ACC.b, 1), 0)
     local bx = 8
     if iconButton("##xbtn", bx, 10, 34, 36, "✕", false) then closeChat() end
     bx = bx + 40
@@ -1764,12 +1780,14 @@ local function drawChatWindow()
         bx = bx + 40
       end
       ui.setCursor(vec2(bx + 8, 16)); ui.setNextItemWidth(math.max(70, 292 - bx))
-      local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 35, 100, "%d%%")
+      -- المدى صار 0-100 (قبل كان أقل شي 35%) — عشان تقدر توصل شفافية كاملة
+      -- فعلاً لو تبي، مو بس تخفيف بسيط.
+      local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 0, 100, "شفافية %d%%")
       if chop then cStor.dc_opacity = nop / 100 end
     end
     -- الشعار/العنوان بمنطقة السحب (يمين) — نص فقط، بدون عناصر تفاعلية
-    dwLeft2("DRIVE", 20, W - 210, 8, 90, 40, rgbm(0.09,0.06,0.02,1))
-    dwLeft2("الشات 💬", 15, W - 118, 14, 110, 30, rgbm(0.10,0.06,0.02,1))
+    dwLeft2("DRIVE", 20, W - 210, 8, 90, 40, ACC)
+    dwLeft2("الشات 💬", 15, W - 118, 14, 110, 30, CY)
 
     -- ===== شريط التلميح =====
     dwBox2("للإرسال ENTER · للإغلاق ESC أو ✕ · اضغط أي عضو لعرض حسابه · اكتب /link لربط الديسكورد", 11.5, 0, 60, W, 18, CDm)
@@ -1793,8 +1811,8 @@ local function drawChatWindow()
       drawMemberSidebar(6, bodyY, sideW, bodyH)
 
       -- سجل الرسائل الأوسط حسب القناة النشطة
-      ui.drawRectFilled(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(0.09, 0.086, 0.106, 1), 12)
-      ui.drawRect(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(1,1,1,0.06), 12, nil, 1)
+      ui.drawRectFilled(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(0.09, 0.086, 0.106, BGA), 12)
+      ui.drawRect(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(1,1,1,0.06 * BGA), 12, nil, 1)
       if S.activeChannel == "general" then
         local fsb = S.newGeneral; S.newGeneral = false
         renderMsgList("##genlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.log, function(m) return m.mine end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
@@ -1825,10 +1843,6 @@ local function drawChatWindow()
       px = px + pw + 6
       if iconButton("##pstick", px, footY, pw, footH - 8, "🖼️", S.activePicker == "stick") then
         S.activePicker = (S.activePicker == "stick") and nil or "stick"
-      end
-      px = px + pw + 6
-      if iconButton("##pgif", px, footY, pw, footH - 8, "GIF", S.activePicker == "gif", 12) then
-        S.activePicker = (S.activePicker == "gif") and nil or "gif"
       end
       px = px + pw + 6
       if iconButton("##pphr", px, footY, pw, footH - 8, "💬", S.activePicker == "phr") then
@@ -1906,7 +1920,10 @@ local function periodicUpdate(sim, now)
     S.lastRanks = now
     fetchRanks()
   end
-  if S.open and RANKS_URL ~= "" and (S.activeChannel == "clan" or S.activeChannel == "dm") and (now - S.lastMsgPoll) > 4 then
+  -- كل ما الشات مفتوح نسحب رسائل الكلان/الخاص بفاصل قصير — بغض النظر عن أي
+  -- تبويب مفتوح حالياً (قبل كانت مقيدة بتبويب الكلان/الخاص فقط بفاصل ٤ ثواني،
+  -- فكانت رسائل الكلان ما توصل إلا لو فاتح نفس التبويب، وبتأخير محسوس).
+  if S.open and RANKS_URL ~= "" and (now - S.lastMsgPoll) > 1.5 then
     S.lastMsgPoll = now
     pollMessages()
   end

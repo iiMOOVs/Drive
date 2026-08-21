@@ -42,7 +42,7 @@ local CDm  = rgbm(0.66, 0.67, 0.70, 1)
 local FONT = "Segoe UI;Weight=Bold"
 local NOOP = function() end
 
-local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_opacity = 1.0, dc_logX = 16, dc_logY = -1 }
+local cStor = ac.storage{ dc_notif = true, dc_posX = -1, dc_posY = -1, dc_logX = 16, dc_logY = -1 }
 
 local CHAT_W, CHAT_H = 980, 660
 local LOG_MAX = 60
@@ -775,6 +775,14 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   -- يصير أي "تسريب" لحظي لرسمه الداخلي (بخط ImGui الافتراضي، مو خطنا العريض)
   -- فوق رسمتنا اليدوية أثناء الكتابة الفعلية، وهذا سبب إحساس "الخط ما يجي
   -- بوزنه الصح" وقت الضغط للكتابة رغم إن الصندوق نفسه كبير وصحيح.
+  -- نمرر حجم صريح (w, boxH) لـ ui.inputText بدل ما نسيبه ياخذ ارتفاعه
+  -- الافتراضي (سطر واحد بخط ImGui الافتراضي) — لو تركناه بدون حجم، ودجته
+  -- الحقيقية تطلع أصغر بكثير من صندوقنا الكبير (خصوصاً صناديق الوصف/الإدمن
+  -- اللي تكبر)، فيبين خط/حدّ رفيع من رسمه الداخلي في نص الصندوق (فوق رسمتنا،
+  -- بغض النظر عن ترتيب الرسم — بالضبط زي مشكلة ChildBg). تمرير نفس حجم
+  -- صندوقنا بالضبط يخلي ودجته الحقيقية تملأ نفس المساحة اللي نغطيها بالضبط،
+  -- فيختفي أي خط متسرّب. هذا نفس أسلوب النسخة الأقدم من هالملف (قبل إصلاح
+  -- تشكيل العربي) اللي كانت تمرر حجم صريح لنفس الصناديق.
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
   local trans = rgbm(0, 0, 0, 0)
@@ -783,7 +791,7 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
   ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
   ui.pushStyleColor(ui.StyleColor.Border, trans)
-  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection, vec2(w, boxH))
   ui.popStyleColor(5)
   local focused = ui.itemActive() or ui.itemFocused()
   if focused then
@@ -808,11 +816,10 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
 end
 
 -- ui.childWindow يرسم خلفيته الخاصة (ChildBg) فوق أي مستطيل نرسمه إحنا يدوياً
--- قبله — وهذا كان السبب الحقيقي وراء "زر الشفافية ما يشتغل": كنا نغيّر عتامة
--- المستطيل اللي نرسمه، لكن أغلب مساحة الشات فعلياً هي childWindow (سجل
--- الرسائل + قائمة الأعضاء + قائمة القنوات)، ولونها الافتراضي من CSP يبقى ثابت
--- بغض النظر عن السلايدر. نلغي خلفية ChildBg بالكامل (شفافة 0,0,0,0) عشان
--- خلفيتنا المرسومة يدوياً (المرتبطة بـ dc_opacity) هي الوحيدة الظاهرة.
+-- قبله (سجل الرسائل + قائمة الأعضاء + قائمة القنوات كلها childWindow). نلغي
+-- خلفية ChildBg بالكامل (شفافة 0,0,0,0) عشان خلفيتنا المرسومة يدوياً هي
+-- الوحيدة الظاهرة دايماً — يبقى مفيد حتى بعد شيل خيار الشفافية (BGA ثابتة
+-- الحين)، لأنه يمنع أي تعارض ألوان بين خلفية CSP الافتراضية وخلفيتنا.
 local function childWindowT(id, size, fn)
   ui.pushStyleColor(ui.StyleColor.ChildBg, rgbm(0, 0, 0, 0))
   ui.childWindow(id, size, fn)
@@ -1818,20 +1825,20 @@ local function drawChatWindow()
 
   ui.transparentWindow('driveChatNative', S.pos, vec2(S.W, S.H), true, true, function()
     local W, H = S.W, S.H
-    -- BGA = نسبة شفافية الخلفية (0 = شفافة بالكامل، 1 = معتّمة كاملة) — تتحكم
-    -- بخلفيات اللوحات (السايدبارات/سجل الرسائل/الكانفس) فقط. فقاعات الرسائل
-    -- والنصوص تبقى بعتامتها الأصلية دايماً عشان "الكلام يضل واضح" حتى لو
-    -- الخلفية شفافة كاملة. الهيدر يبقى ثابت (مو خاضع للسلايدر) عشان يضل
-    -- واضح للقراءة ومتوفر كمقبض لسحب النافذة بكل الأحوال.
-    local BGA = cStor.dc_opacity or 1
+    -- شلنا خيار شفافية الخلفية القابلة للتعديل نهائياً — كانت تفتح مشاكل رسم
+    -- متلاحقة (خلفية ChildBg، خطوط صناديق الكتابة الداخلية، تباين الألوان)
+    -- كل ما تصير الخلفية شبه-شفافة، بدون أي فايدة توازي هالصداع. البقية
+    -- (BGA/S.bgAlpha) خليناها بالكود عشان دوال الرسم الثانية (سايدبار
+    -- الأعضاء/القنوات) لسا تستخدم نفس المتغير، بس قيمتها ثابتة معتّمة كاملة.
+    local BGA = 1
     S.bgAlpha = BGA -- متاحة لدوال الرسم الثانية (سايدبار الأعضاء/القنوات) عبر S
     ui.drawRectFilled(vec2(0, 0), vec2(W, H), rgbm(0.078, 0.075, 0.094, BGA), 18)
     ui.drawRect(vec2(0, 0), vec2(W, H), rgbm(ACC.r, ACC.g, ACC.b, math.max(0.06, 0.35 * BGA)), 18, nil, 1)
 
     -- ===== الهيدر =====
-    -- مهم: كل الأزرار/السلايدر لازم تكون بأول 300px (يسار) — منطقة سحب النافذة
-    -- تبدأ من x=300 (تحت)، ونفس القاعدة اللي كانت بالنسخة القديمة (CEF) لتفادي
-    -- إن الضغط على زر يُقرأ كبداية سحب للنافذة بنفس الوقت.
+    -- مهم: كل الأزرار لازم تكون بأول 300px (يسار) — منطقة سحب النافذة تبدأ من
+    -- x=300 (تحت)، ونفس القاعدة اللي كانت بالنسخة القديمة (CEF) لتفادي إن
+    -- الضغط على زر يُقرأ كبداية سحب للنافذة بنفس الوقت.
     -- هيدر داكن (بدل الشريط البرتقالي الصريح المسطّح اللي كان يحس اللاعب إنه
     -- بواجهة قديمة) + خط توهج تدريجي بالأسفل بلون البراند — نفس فكرة الـ glow
     -- المستخدمة بواجهات الألعاب الحديثة، مبني بس من مستطيلات متراكبة بعتامة
@@ -1844,9 +1851,9 @@ local function drawChatWindow()
     local bx = 8
     if iconButton("##xbtn", bx, 10, 34, 36, "✕", false) then closeChat() end
     bx = bx + 40
-    -- بقية أزرار الهيدر (إشعارات/كلان/إدارة) والسلايدر تتعطّل تماماً وقت فتح
-    -- أي مودال — عشان ما تفتح مودال ثاني فوق الأول وتصير الواجهة متداخلة (نفس
-    -- سبب مشكلة "الشات يضرب" اللي صارت وقت فتح البروفايل وغيره).
+    -- بقية أزرار الهيدر (إشعارات/كلان/إدارة) تتعطّل تماماً وقت فتح أي مودال —
+    -- عشان ما تفتح مودال ثاني فوق الأول وتصير الواجهة متداخلة (نفس سبب مشكلة
+    -- "الشات يضرب" اللي صارت وقت فتح البروفايل وغيره).
     if not overlayActive then
       if iconButton("##notifbtn", bx, 10, 34, 36, cStor.dc_notif and "🔔" or "🔕", cStor.dc_notif) then
         cStor.dc_notif = not cStor.dc_notif
@@ -1859,11 +1866,6 @@ local function drawChatWindow()
         if iconButton("##adminbtn", bx, 10, 34, 36, "📨", S.adminOpen) then S.adminOpen = true; S.adminJustOpened = true end
         bx = bx + 40
       end
-      ui.setCursor(vec2(bx + 8, 16)); ui.setNextItemWidth(math.max(70, 292 - bx))
-      -- المدى صار 0-100 (قبل كان أقل شي 35%) — عشان تقدر توصل شفافية كاملة
-      -- فعلاً لو تبي، مو بس تخفيف بسيط.
-      local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 0, 100, "شفافية %d%%")
-      if chop then cStor.dc_opacity = nop / 100 end
     end
     -- الشعار/العنوان بمنطقة السحب (يمين) — نص فقط، بدون عناصر تفاعلية
     dwLeft2("DRIVE", 20, W - 210, 8, 90, 40, ACC)

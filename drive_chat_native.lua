@@ -770,12 +770,14 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
     boxH = math.max(h, math.min(maxH or (h * 4), math.ceil(msz.y) + 18))
   end
 
-  -- رجّعنا هنا لأبسط وأثبت شكل: بدون حجم صريح، وبدون pushStyleVarAlpha —
-  -- جرّبنا حجم صريح (vec2) و/أو تصفير الألفا الكامل عشان نخفي خط متسرّب من
-  -- رسم الودجت الداخلي، لكن هالتركيبة (حجم + ألفا صفر مع بعض) سبّبت مشكلة
-  -- أخطر بكثير: الكتابة توقفت تماماً بصندوق الرسالة. الأولوية المطلقة إن
-  -- الكتابة تشتغل صح دايماً — خط رفيع متسرّب أهون من صندوق ما تقدر تكتب فيه.
-  -- رجعنا لنفس أسلوب مرجع الرادار المثبت (بدون حجم، ستايل كولور شفاف بس).
+  -- رجّعت هنا نمرر حجم صريح (w, boxH) لـ ui.inputText — نفس الملف اللي أرسلته
+  -- كمرجع "كانت مضبوطة بالنسخة الأولى" فيه بالضبط هالسطر (حجم صريح + نفس
+  -- الـ 5 StyleColor شفافة، بدون pushStyleVarAlpha). يعني تشخيصي السابق (إن
+  -- الحجم الصريح لحاله سبب توقف الكتابة) كان غلط — اللي فعلاً كسر الكتابة
+  -- بجولة سابقة هو تصفير الألفا (pushStyleVarAlpha) لما انضاف مع الحجم بنفس
+  -- الوقت. الحجم الصريح لحاله مثبت إنه سليم (منك مباشرة) وهو الحل الصحيح
+  -- لمشكلة الخط المتسرّب من رسم الودجت الداخلي (لأنه يخلي حجمه الحقيقي يطابق
+  -- صندوقنا المرسوم بالضبط، فما يبين أي جزء منه خارج تغطيتنا).
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
   local trans = rgbm(0, 0, 0, 0)
@@ -784,7 +786,7 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
   ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
   ui.pushStyleColor(ui.StyleColor.Border, trans)
-  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection, vec2(w, boxH))
   ui.popStyleColor(5)
   local focused = ui.itemActive() or ui.itemFocused()
   if focused then
@@ -1834,32 +1836,44 @@ local function drawLinkCodePanel(winW, winH)
   ly = ly + titleH + gap
 
   -- صندوق الأمر (!verify code) لحاله + زر النسخ
-  -- قبل كذا كان عرض صندوق النص محسوب بشكل يخلّيه يتداخل فعلياً مع زر النسخ
-  -- (يبدأ الزر عند x+w-pad-copyW-6 بس صندوق النص يمتد لين x+pad+14+(w-pad*2-copyW-14)
-  -- يعني يتجاوز بداية الزر بـ6px) — فآخر رقم/رقمين من الكود كانوا يترسمون
-  -- تحت خلفية الزر نفسها (يختفون بصرياً)، وهذا سبب "الرقم مو واضح". هنا نحسب
-  -- موقع الزر أولاً، وبعدها نعطي صندوق النص عرض يوقف بفجوة واضحة (12px) قبله
-  -- بأي حال — مافي احتمال تداخل حتى لو الكود طوّل شوي.
+  -- زر "📋 نسخ" يعتمد على ac.setClipboardText، والمستخدم أكد إنه ما يشتغل
+  -- (يضغط ولا شي ينُنسخ فعلياً بالحافظة) — خلّيناه موجود كمحاولة إضافية بس
+  -- ما نعتمد عليه لحاله. الحل الموثوق: نخلي صندوق الكود نفسه ui.inputText
+  -- حقيقي وواضح (مو نص مرسوم بس) — أي صندوق نص حقيقي بالمحرك يقدر المستخدم
+  -- يضغط جواه ويحدد (سحب أو Ctrl+A) وينسخ (Ctrl+C) بنفس طريقة أي صندوق نص
+  -- بأي برنامج، بدون ما نعتمد على API خاص فينا ممكن ما يكون شغّال. القيمة
+  -- المعروضة نفسها (verifyLine) إنجليزية/أرقام بس، فما نحتاج تشكيل عربي —
+  -- نسيب الودجت يرسم شكله الطبيعي (مو مخفي زي صندوق الرسائل).
+  -- معرّف الودجت مربوط برقم جيل يتغيّر كل ما يتغيّر كود التفعيل نفسه (كود
+  -- جديد بعد إعادة طلب رابط وهي اللوحة مفتوحة أصلاً) عشان يفرض تحديث القيمة
+  -- المعروضة فوراً حتى لو المستخدم كان عدّل/مسح المحتوى بالغلط قبل كذا.
+  if S.linkCodeFieldFor ~= verifyLine then
+    S.linkCodeFieldFor = verifyLine
+    S.linkCodeFieldGen = (S.linkCodeFieldGen or 0) + 1
+  end
   local copyW = 74
   local btnGap = 12
-  ui.drawRectFilled(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(0.11, 0.115, 0.14, 1), 8)
-  ui.drawRect(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(1, 1, 1, 0.08), 8, nil, 1)
   local btnX = x + w - pad - copyW
-  local textLeft = x + pad + 14
-  local textW = math.max(40, (btnX - btnGap) - textLeft)
-  ui.pushDWriteFont(FONT)
-  ui.setCursor(vec2(textLeft, ly))
-  ui.dwriteTextAligned(verifyLine, 17, ui.Alignment.Center, ui.Alignment.Center, vec2(textW, codeBoxH), false, CW)
-  ui.popDWriteFont()
+  local fieldLeft = x + pad
+  local fieldW = math.max(60, (btnX - btnGap) - fieldLeft)
+  ui.setCursor(vec2(fieldLeft, ly))
+  ui.setNextItemWidth(fieldW)
+  ui.pushStyleColor(ui.StyleColor.FrameBg, rgbm(0.11, 0.115, 0.14, 1))
+  ui.pushStyleColor(ui.StyleColor.FrameBgHovered, rgbm(0.14, 0.145, 0.17, 1))
+  ui.pushStyleColor(ui.StyleColor.FrameBgActive, rgbm(0.14, 0.145, 0.17, 1))
+  ui.pushStyleColor(ui.StyleColor.Border, rgbm(1, 1, 1, 0.08))
+  ui.pushStyleColor(ui.StyleColor.Text, CW)
+  ui.inputText("##linkcodefield_g" .. S.linkCodeFieldGen, verifyLine, ui.InputTextFlags.RetainSelection, vec2(fieldW, codeBoxH))
+  ui.popStyleColor(5)
   if textButton("##linkcodecopy", btnX, ly + 6, copyW, codeBoxH - 12, "📋 نسخ", true) then
     local ok = pcall(function() ac.setClipboardText(verifyLine) end)
-    toast(ok and "تم نسخ الأمر ✓" or "تعذّر النسخ — انسخه يدوياً")
+    toast(ok and "تم نسخ الأمر ✓" or "اضغط جوا الصندوق واختره (Ctrl+A) وانسخه (Ctrl+C)", 3.5)
   end
   ly = ly + codeBoxH + gap
 
   ui.pushDWriteFont(FONT)
   ui.setCursor(vec2(x + pad, ly))
-  ui.dwriteTextAligned("اضغط 📋 نسخ، ثم الصق الأمر بالخاص لبوت الديسكورد أو بأي روم", 12.5, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad * 2, instrH), true, CDm)
+  ui.dwriteTextAligned("اضغط جوا الصندوق فوق، اختره كامل (Ctrl+A) وانسخه (Ctrl+C)، ثم الصقه بالخاص لبوت الديسكورد", 12.5, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad * 2, instrH), true, CDm)
   ly = ly + instrH + gap
   ui.setCursor(vec2(x + pad, ly))
   ui.dwriteTextAligned("⏳ صالح ١٠ دقايق — لا تعطيه أحد.", 12, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad * 2, expiryH), false, CDm)

@@ -2330,6 +2330,16 @@ local __dcOk, DriveChat = pcall(function()
 
   -- ===== فتح/قفل =====
   local function openChat()
+    -- الشات القديم هذا معطّل تماماً (WebBrowser = nil فوق) — ما فيه متصفح
+    -- يفتح إطلاقاً. لو سمحنا لـ S.open يصير true هنا برضو (حتى بدون متصفح
+    -- ظاهر)، كان يفتح لفريم واحد بس (draw() يقفله فوراً لأنه ما فيه S.browser)
+    -- ثم يرجع S.open=false تاني الفريم اللي بعده — وهالتذبذب كان يخلي
+    -- update() تحت يفرض وضع الإدخال UI لفريم وحد بس ثم يرجع يستعيد وضع اللعب
+    -- (Game) فوراً، وهذا كان يلغي/يعارض إشارة drive_chat_native.lua اللي
+    -- تحاول تخلي وضع الإدخال UI مستمر طول ما الشات الجديد فيه كتابة فعلية —
+    -- وهذا سبب حقيقي لتسرب اختصارات الأدمن (T/U/O/K/F/B) وأنت تكتب. نمنع
+    -- S.open من يصير true من الأساس هنا عشان ما تصير هذي المعارضة إطلاقاً.
+    if not S.browser then return end
     S.open = true
     if S.browser and S.ready then jsend('dcFocus', true) end
   end
@@ -3337,6 +3347,13 @@ local function drawChatHint()
   if not CFG.SHOW_OPEN_HINT then return end
   if hintStor.hide_hints then return end
   if DriveChat.isOpen() then return end
+  -- DriveChat.isOpen() هذا يرجع دايماً false الحين (الشات القديم معطّل بالكامل،
+  -- شفنا). الشات الفعلي (drive_chat_native.lua) سكربت منفصل ما نقدر نسأله
+  -- مباشرة "هل انت مفتوح؟" — بس هو الوحيد اللي يضبط وضع الإدخال UI بهذا
+  -- الملف كامل (تأكدنا، ما فيه غيره)، فلو شفناه UI نعرف إن فيه شات/كتابة
+  -- فعلية صايرة بمكان ثاني ونخفي تلميح "اضغط C" عشان ما يتراكب فوق الشات.
+  if type(ac.getCurrentInputMethod) == "function" and ac.UserInputMode
+     and ac.getCurrentInputMethod() == ac.UserInputMode.UI then return end
 
   local screen = ac.getUI().windowSize
   local intro = Core.clock < CFG.HINT_INTRO_SEC

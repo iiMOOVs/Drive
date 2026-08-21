@@ -739,8 +739,24 @@ end
 -- (محاذاة End = يمين، مع Shaping صحيح) — نفس الأسلوب المستخدم أصلاً لعرض كل
 -- رسائل الشات المُرسلة (drawMsgRow). القيمة المخزّنة بالمتغير نفسها سليمة
 -- دايماً بكل الأحوال (المشكلة كانت بالعرض بس، مو بالنص المُرسَل فعلياً).
+-- ui.inputText (مثل أي ودجت Dear ImGui) ما يعيد نسخ قيمة "value" اللي نمرّرها
+-- لداخل بافره الداخلي طالما نفس الـ id لسا نشط/بالفوكس — هذا سلوك موثّق
+-- بمرجع الرادار (radarInputGen) وسببه تصفير صندوق الشات ما يشتغل بعد الإرسال
+-- (يفضل يعرض آخر قيمة كتبناها إحنا يدوياً، مو الفاضية الجديدة). الحل: نتابع
+-- آخر قيمة رجّعناها لكل id، ولو "value" الجايه من بره اختلفت عنها (يعني فيه
+-- تغيير برمجي خارجي — تصفير بعد إرسال، إضافة إيموجي/منشن، الخ) نغيّر معرّف
+-- الودجت نفسه فيجبر CSP يبنيه من جديد ويطلع بالقيمة الصحيحة فوراً.
+local ARIN_STATE = {}
 local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   value = value or ""
+  local st = ARIN_STATE[id]
+  if not st then st = { lastOut = value, gen = 0 }; ARIN_STATE[id] = st end
+  if value ~= st.lastOut then
+    st.gen = st.gen + 1
+    st.lastOut = value
+  end
+  local realId = id .. "_g" .. st.gen
+
   local sz = 15
   local boxH = h
   if grow then
@@ -754,13 +770,28 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   -- نستدعي ui.inputText بشكل بسيط (سطر واحد، بدون تمرير حجم vec2) — بالضبط
   -- زي مرجع صندوق الرادار (ما يستخدم حجم مخصص حتى لصندوقه المتنامي)؛ الحجم/
   -- الالتفاف المرئي كله نتحكم فيه إحنا يدوياً بالرسم اللي تحت، مو بالودجت نفسه.
+  -- كمان نخفي رسم الودجت الداخلي بالكامل (نص + خلفية + حدّ) بنفس طريقة إخفاء
+  -- شات CSP الأصلي المثبتة بـ player_menu.lua (StyleColor شفاف) — عشان ما
+  -- يصير أي "تسريب" لحظي لرسمه الداخلي (بخط ImGui الافتراضي، مو خطنا العريض)
+  -- فوق رسمتنا اليدوية أثناء الكتابة الفعلية، وهذا سبب إحساس "الخط ما يجي
+  -- بوزنه الصح" وقت الضغط للكتابة رغم إن الصندوق نفسه كبير وصحيح.
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
-  local nv, changed, entered = ui.inputText(id, value, ui.InputTextFlags.RetainSelection)
-  if ui.itemActive() or ui.itemFocused() then
+  local trans = rgbm(0, 0, 0, 0)
+  ui.pushStyleColor(ui.StyleColor.Text, trans)
+  ui.pushStyleColor(ui.StyleColor.FrameBg, trans)
+  ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
+  ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
+  ui.pushStyleColor(ui.StyleColor.Border, trans)
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
+  ui.popStyleColor(5)
+  local focused = ui.itemActive() or ui.itemFocused()
+  if focused then
     pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI); ui.captureKeyboard(true) end)
+    S.chatTyping = true
   end
   local outVal = changed and nv or value
+  if changed then st.lastOut = outVal end
 
   ui.drawRectFilled(vec2(x, y), vec2(x + w, y + boxH), rgbm(0.11, 0.115, 0.14, 1), 8)
   ui.drawRect(vec2(x, y), vec2(x + w, y + boxH), rgbm(ACC.r, ACC.g, ACC.b, 0.30), 8, nil, 1)
@@ -2032,10 +2063,15 @@ script.update = function(dt)
   else
     S.prevKey = false
   end
-  -- ملاحظة: ما نضبط متغير global زي "chatTyping" هنا — كان مفيد بالنسخة
-  -- القديمة (سكربت واحد مدمج مع player_menu.lua)، لكن كل سكربت SCRIPT_X منفصل
-  -- يشتغل بـ Lua VM معزولة تماماً؛ ضبط global هنا ما ينوصل لملف player_menu.lua
-  -- إطلاقاً (كان كود ميت يعطي انطباع كاذب إن فيه تزامن بين الملفين).
+  -- ملاحظة: ما نعتمد على متغير global زي "chatTyping" يعبر بين السكربتات —
+  -- كل سكربت SCRIPT_X منفصل يشتغل بـ Lua VM معزولة تماماً، فأي global هنا ما
+  -- ينوصل لملف admin_menu.lua إطلاقاً. اللي فعلاً يعبر بين السكربتات (لأنه
+  -- نداء حقيقي لمحرك اللعبة، مو متغير Lua) هو ac.setCurrentInputMethod تحت.
+  -- "S.chatTyping" (يتصفّر أول كل فريم برسم بـ script.drawUI، ويترفع true
+  -- من جوا arInputText أي صندوق كتابة يصير فيه فوكس) تتبّع داخلي بهذا
+  -- الملف بس، نستخدمه عشان نعيد تأكيد نداء ac.setCurrentInputMethod من أكثر
+  -- من نقطة (هنا وبأول drawUI) — تقليلاً لأي احتمال فرق ترتيب/فريم بين
+  -- تشغيل سكربتنا وسكربت منيو الإدمن كل فريم.
 
   if S.open then
     if not S.inputSaved then
@@ -2057,6 +2093,15 @@ script.update = function(dt)
 end
 
 script.drawUI = function()
+  if S.open then
+    -- نفس تأكيد وضع الإدخال اللي بـ script.update، بس هنا كمان (نهاية
+    -- الفريم مقابل بدايته) — عشان أي سكربت ثاني يقرأ الحالة بلحظة مختلفة
+    -- بنفس الفريم يشوف "UI" مؤكدة، مو بس أول الفريم.
+    pcall(function()
+      if ac.setCurrentInputMethod and ac.UserInputMode then ac.setCurrentInputMethod(ac.UserInputMode.UI) end
+    end)
+  end
+  S.chatTyping = false
   local sim = ac.getSim()
   pcall(function() drawChatLog(sim) end)
   if S.open then

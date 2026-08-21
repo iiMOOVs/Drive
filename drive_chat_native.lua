@@ -115,7 +115,7 @@ local S = {
   msgInput = "", wantFocusInput = false,
 
   -- الأعضاء
-  members = {}, memberSearch = "", joined = {}, lastPush = -999,
+  members = {}, joined = {}, lastPush = -999,
   ranks = {}, lastRanks = -999,
 
   -- القنوات (عام/كلان/خاص)
@@ -123,7 +123,6 @@ local S = {
   clanLog = {}, clanMaxId = 0, clanSeen = {},
   dmConvs = {}, dmMsgs = {}, dmLastId = {}, dmSeen = {}, activeDmWith = nil,
   lastMsgPoll = -999,
-  dmSearch = "",
 
   -- منتقي الملصقات/الإيموجي
   activePicker = nil, -- nil | 'emoji' | 'stick' | 'gif' | 'phr'
@@ -989,9 +988,6 @@ local function drawMemberSidebar(x, y, w, h)
   ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.067, 0.063, 0.082, bga), 12)
   ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06 * bga), 12, nil, 1)
   dwLeft2("👥 الأعضاء (" .. #S.members .. ")", 15, x + 14, y + 10, w - 28, 22, CW)
-  -- بحث
-  local newSearch = arInputText("##memsearch", x + 12, y + 36, w - 24, 26, S.memberSearch, "ابحث عن عضو...")
-  S.memberSearch = newSearch
   -- ترتيب: أنا أولاً، ثم الرتبة، ثم الاسم
   local sorted = {}
   for _, m in ipairs(S.members) do sorted[#sorted + 1] = m end
@@ -1001,32 +997,30 @@ local function drawMemberSidebar(x, y, w, h)
     if ra ~= rb then return ra < rb end
     return (a.name or "") < (b.name or "")
   end)
-  local q = (S.memberSearch or ""):lower()
-  ui.setCursor(vec2(x + 6, y + 64))
-  childWindowT("##mlistc", vec2(w - 12, h - 74), function()
+  -- شلنا مربع البحث عن عضو بناءً على طلب المستخدم — القائمة تعرض الكل دايماً.
+  ui.setCursor(vec2(x + 6, y + 38))
+  childWindowT("##mlistc", vec2(w - 12, h - 48), function()
     local yy = 4
     for _, m in ipairs(sorted) do
-      if q == "" or (m.name or ""):lower():find(q, 1, true) then
-        ui.setCursor(vec2(4, yy))
-        local clicked = ui.invisibleButton("##mrow" .. m.name, vec2(w - 24, 46))
-        local hover = ui.itemHovered()
-        if hover then
-          ui.drawRectFilled(vec2(4, yy), vec2(w - 20, yy + 46), rgbm(ACC.r, ACC.g, ACC.b, 0.10), 8)
-          ui.setMouseCursor(ui.MouseCursor.Hand)
-        end
-        drawAvatar(4 + 22, yy + 23, 20, { name = m.name, avatar = m.avatar, srv = false })
-        local subtitle = m.isMe and "أنت" or (m.speed and ("💨 " .. tostring(m.speed) .. " كم/س") or "متصل")
-        local nameX = 4 + 48
-        dwLeft2(m.name or "?", 14, nameX, yy + 3, w - 120, 18, ACC)
-        -- الشارة لازم تُرسم بعد نهاية اسم اللاعب فعلياً (نقيس عرض النص أولاً)
-        -- وإلا تتراكب فوق الاسم — نفس نمط علامة التوثيق (✓) في drawMsgRow.
-        local nameW = math.min(w - 170, math.ceil(ui.measureDWriteText(m.name or "?", 14, 400).x) + 6)
-        local bw = drawBadge(nameX + nameW, yy + 3, m.rank, m.rankColor)
-        dwLeft2(subtitle, 11.5, nameX, yy + 23, w - 120, 16, CDm)
-        if m.discord then dwLeft2("🔗", 12, w - 44, yy + 12, 20, 18, rgbm(0.4,0.7,1,1)) end
-        if clicked then S.profileOpen = true; S.profileName = m.name; S.descLoadedFor = nil; S.profileJustOpened = true end
-        yy = yy + 50
+      ui.setCursor(vec2(4, yy))
+      local clicked = ui.invisibleButton("##mrow" .. m.name, vec2(w - 24, 46))
+      local hover = ui.itemHovered()
+      if hover then
+        ui.drawRectFilled(vec2(4, yy), vec2(w - 20, yy + 46), rgbm(ACC.r, ACC.g, ACC.b, 0.10), 8)
+        ui.setMouseCursor(ui.MouseCursor.Hand)
       end
+      drawAvatar(4 + 22, yy + 23, 20, { name = m.name, avatar = m.avatar, srv = false })
+      local subtitle = m.isMe and "أنت" or (m.speed and ("💨 " .. tostring(m.speed) .. " كم/س") or "متصل")
+      local nameX = 4 + 48
+      dwLeft2(m.name or "?", 14, nameX, yy + 3, w - 120, 18, ACC)
+      -- الشارة لازم تُرسم بعد نهاية اسم اللاعب فعلياً (نقيس عرض النص أولاً)
+      -- وإلا تتراكب فوق الاسم — نفس نمط علامة التوثيق (✓) في drawMsgRow.
+      local nameW = math.min(w - 170, math.ceil(ui.measureDWriteText(m.name or "?", 14, 400).x) + 6)
+      local bw = drawBadge(nameX + nameW, yy + 3, m.rank, m.rankColor)
+      dwLeft2(subtitle, 11.5, nameX, yy + 23, w - 120, 16, CDm)
+      if m.discord then dwLeft2("🔗", 12, w - 44, yy + 12, 20, 18, rgbm(0.4,0.7,1,1)) end
+      if clicked then S.profileOpen = true; S.profileName = m.name; S.descLoadedFor = nil; S.profileJustOpened = true end
+      yy = yy + 50
     end
   end)
 end
@@ -1061,10 +1055,9 @@ local function drawChannelSidebar(x, y, w, h)
   local listY = y + 58
   local listH = h - 66
   if S.activeChannel == "dm" then
-    -- بحث + زر محادثة جديدة
-    local ns = arInputText("##dmsearch", x + 10, listY, w - 20, 26, S.dmSearch, "ابحث في المحادثات...")
-    S.dmSearch = ns
-    listY = listY + 30; listH = listH - 30 - 40
+    -- شلنا مربع البحث بالمحادثات الخاصة بناءً على طلب المستخدم — يبقى بس
+    -- حجز المساحة لزر "+ محادثة جديدة" بالأسفل.
+    listH = listH - 40
   end
   ui.setCursor(vec2(x + 8, listY))
   childWindowT("##chlistc", vec2(w - 16, listH), function()
@@ -1093,12 +1086,9 @@ local function drawChannelSidebar(x, y, w, h)
         dwLeft2("اضغط للرجوع لقائمة المحادثات", 11, 12, 26, w - 40, 16, CDm)
         if clicked then closeDm() end
       else
-        local q = (S.dmSearch or ""):lower()
         local reqs, others = {}, {}
         for _, c in ipairs(S.dmConvs) do
-          if q == "" or (c.withName or ""):lower():find(q, 1, true) then
-            if c.status == "pending" and not c.isInitiator then reqs[#reqs+1] = c else others[#others+1] = c end
-          end
+          if c.status == "pending" and not c.isInitiator then reqs[#reqs+1] = c else others[#others+1] = c end
         end
         if #S.dmConvs == 0 then
           dwLeft2("💬 ما عندك محادثات خاصة بعد", 12.5, 8, 6, w - 24, 40, CDm)

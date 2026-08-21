@@ -206,11 +206,21 @@ local Core = {
 }
 
 -- true لو اللاعب يكتب في الشات أو في خانة نص (نمنع المفاتيح وقتها)
-local chatTyping = false   -- يصير true وقت الشات مفتوح — يوقف مفاتيح المنيو (رجوع/بوست/شدّات) عشان ما تكرش
+local chatTyping = false   -- يصير true وقت الشات (القديم المدمج هنا) مفتوح — دايماً false الحين
+                            -- لأن هذا الشات القديم معطّل (WebBrowser = nil)، وما يتحدّث من الشات
+                            -- الجديد drive_chat_native.lua (سكربت منفصل تماماً، Lua VM معزولة).
 local function isTyping()
   if chatTyping then return true end
   if type(ui.wantCaptureKeyboard) == "function" and ui.wantCaptureKeyboard() then return true end
   if type(ac.isChatOpen) == "function" and ac.isChatOpen() then return true end
+  -- الشات الجديد (drive_chat_native.lua) سكربت SCRIPT_X منفصل — ما نقدر نقرأ
+  -- متغيراته مباشرة. بس هو يضبط ac.setCurrentInputMethod(UI) باستمرار طول ما
+  -- هو مفتوح/فيه صندوق كتابة بالفوكس (نداء حقيقي لمحرك اللعبة، يعبر بين كل
+  -- السكربتات، عكس أي متغير Lua عادي) — هذا أوثق إشارة نقدر نتحقق منها هنا
+  -- إن كان فيه كتابة صايرة بالشات الجديد، فنطفي مفاتيح المنيو (بوست/رجوع/الشدّات)
+  -- بنفس اللحظة تماماً زي ما كان يصير بالشات القديم المدمج.
+  if type(ac.getCurrentInputMethod) == "function" and ac.UserInputMode
+     and ac.getCurrentInputMethod() == ac.UserInputMode.UI then return true end
   return false
 end
 
@@ -1867,14 +1877,24 @@ local __dcOk, DriveChat = pcall(function()
     "https://i.pinimg.com/236x/9c/b9/17/9cb917337ebedb3dda74c974bde47dc0.jpg",
     "https://i.ytimg.com/vi/h5f9rl2Y5F8/oar2.jpg",
     "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEibrYm5kiGVQRHXjNHVTJg1U8X97tUKCHc5K2r2rA4_J0xo8ALquNxqJK3VMxbI0N6mlcw_XguUtshae1huBmBNNe8cwh6_YyU9cVcZYa3_xtf8GnO2odL2vzqcWp31WjuCbkGL4r8BT1AufOl99KqxR27ITeULa6749SXfQFGFzJ3iW7udeFXz9ifywA/s640/IMG_20220925_202534_772.jpg",
-	  "https://i.imgur.com/9uijEsa.png",
-	  "https://pbs.twimg.com/media/HEOexNwWkAArXOi.jpg",
-	  "https://i.imgur.com/4wYJO7H.png",
+	"https://i.imgur.com/9uijEsa.png",
+	"https://pbs.twimg.com/media/HEOexNwWkAArXOi.jpg",
+	"https://i.imgur.com/4wYJO7H.png",
   	"https://i.imgur.com/GvkKdq6.png",
+  	"https://pbs.twimg.com/media/EoeGhb_W4AA9C4k.jpg",
+  	"https://pbs.twimg.com/media/EuXWokjXYAADh8S.jpg",
+  	"https://pbs.twimg.com/media/EsJHirnWMAQL1Ms.jpg",
+  	"https://i.imgur.com/2mcsEo7.png",
+  	"https://i.imgur.com/2mcsEo7.png",
+  	"https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcSFzD9EzBhZxb2sWSCuS2tLgObdTqGoZSgUMHShhQbkiA&shttps%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%3Fq=tbn%3AANd9GcSFzD9EzBhZxb2sWSCuS2tLgObdTqGoZSgUMHShhQbkiA&s=",
+  	"https://encrypted-tbn0.gstatic.com/images?q=tbn%3AANd9GcQ54uKUXaNz07fJcjT7r9NlIbfGSiUWYtMwnI7d-vfM3gLKD1TuCXjMVd4&s=10",
   }
   local GIFS = {
-    "https://media.wired.com/photos/593221d8b8eb31692072dedf/3:2/w_2560%2Cc_limit/MJ-giphy.gif",
-    "https://www.thisiscolossal.com/wp-content/uploads/2014/03/120430.gif",
+    "https://media.tenor.com/_IBOBUwQ8_sAAAAM/shabab-albomb.gif",
+    "https://media.tenor.com/ps7WyW8M2K0AAAAM/yypppoo.gif",
+    "https://i.makeagif.com/media/2-23-2024/3VNC5f.gif",
+    "https://media.tenor.com/leAEu72bILgAAAAM/ekoi-ekoi-dancekid.gif",
+    "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRuEGI17Qtt9cAkEz9KgHgGt1cQvbF4XWXSwViZmrtNGw&s=10",
   }
   local ALLPICS, PICIDX = {}, {}
   for _, u in ipairs(STICKERS) do ALLPICS[#ALLPICS + 1] = u end
@@ -2505,6 +2525,15 @@ local __dcOk, DriveChat = pcall(function()
       ac.log('[DRIVE CHAT] WebBrowser require FAILED on all paths (CSP 0.3.0?) — chat browser disabled')
     end
   end
+  -- ===== تعطيل متعمد (لا علاقة له بفشل require أعلاه) =====
+  -- الشات صار سكربت Lua منفصل تماماً وnative بالكامل: drive_chat_native.lua
+  -- (يرسم بـ ui.* مباشرة، بدون WebBrowser/CEF — يتجنب قيد "shared memory" اللي
+  -- يمنع Server Scripts من فتح المتصفح، وبنفس الوقت ما يعرّض ملف الشات مصدرياً).
+  -- نطفي هنا أي إنشاء/فتح للمتصفح القديم عمداً عشان ما تصير نافذتان شات فوق بعض
+  -- (كلا السكربتين يحاولان يمسكان زر C ويخفيان شات AC الأصلي بنفس الوقت).
+  -- كل بقية هذا البلوك (fetchRanks/getRank) تبقى شغّالة عادي — تاقات الأسماء [29]
+  -- تعتمد عليها لعرض الرتب فوق السيارات، وهذا مستقل عن المتصفح تماماً.
+  WebBrowser = nil
   -- ننشئ المتصفح مرة وحدة بحجم ثابت (نفس نمط IDDL بالحرف — pcall واحد، بدون رجوع/إعادة بناء)
   if WebBrowser then
     pcall(function()
@@ -2844,8 +2873,9 @@ local __dcOk, DriveChat = pcall(function()
       fetchRanks()
     end
 
-    -- [3-CHAT] شات الكلان + قائمة المحادثات الخاصة + المحادثة المفتوحة (كل 4 ثواني)
-    if RANKS_URL ~= "" and (now - S.lastMsgPoll) > 4 then
+    -- [3-CHAT] شات الكلان/الخاص — معطّل هنا عمداً: صار drive_chat_native.lua يسويه بنفسه
+    -- (تركه شغّال كان بيرسل طلب HTTP فاضي كل 4 ثواني بدون أي مستهلك — حمل على البوت بلا فايدة)
+    if false and RANKS_URL ~= "" and (now - S.lastMsgPoll) > 4 then
       S.lastMsgPoll = now
       pollMessages()
     end
@@ -3323,10 +3353,12 @@ local function drawChatHint()
     ui.drawRect(vec2(0, 0), vec2(w, h), rgbm(ACC.r, ACC.g, ACC.b, hover and 0.9 or (0.25 + 0.45 * pulse)), 12 * k, nil, 1.5 * k)
     drawLogo(12 * k, 9 * k, 74 * k, h - 9 * k)
     ui.drawLine(vec2(84 * k, 11 * k), vec2(84 * k, h - 11 * k), rgbm(1, 1, 1, 0.12), 1)
-    dwBox("C اضغط هنا او ", 13.5 * k,
+    dwBox("C اضغط هنا او", 13.5 * k,
       92 * k, 0, w - 104 * k, h, rgbm(CW.r, CW.g, CW.b, intro and 1.0 or (0.70 + 0.30 * pulse)))
     if hover then ui.setMouseCursor(ui.MouseCursor.Hand) end
-    if clicked then DriveChat.toggle() end
+    -- ملاحظة: ما نقدر نستدعي DriveChat.toggle() هنا بعد — الشات صار سكربت منفصل
+    -- (drive_chat_native.lua)، وسكربتات CSP معزولة عن بعض، ما فيه استدعاء دوال مباشر
+    -- بينها. اللافتة تبقى مجرد تلميح "اضغط C" (والضغط عليها بالماوس ما يسوي شي الحين).
   end)
 end
 
@@ -3395,10 +3427,6 @@ pcall(function()
     end)
 end)
 
--- تسجيل الشات (DRIVE Chat) كزر إضافي (اختياري)
-pcall(function()
-    ui.registerOnlineExtra("DRIVE Chat", function()
-        -- يفتح ويقفل الشات عند الضغط عليه
-        DriveChat.toggle()
-    end)
-end)
+-- "DRIVE Chat" بقائمة الأونلاين صار يسجّله drive_chat_native.lua بنفسه (سكربت
+-- منفصل) — أزلنا التسجيل المكرر هنا عشان ما يبقى زر ميت (كان يستدعي
+-- DriveChat.toggle() اللي ما يفتح شي بعد تعطيل المتصفح القديم).

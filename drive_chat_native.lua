@@ -176,9 +176,9 @@ end
 local function nowHM()
   return os.date("%H:%M")
 end
-local function toast(t)
+local function toast(t, dur)
   S.toastText = t
-  S.toastUntil = S.clock + 2.5
+  S.toastUntil = S.clock + (dur or 2.5)
 end
 local function isLinked(name)
   if not name or name == "" then return false end
@@ -312,9 +312,17 @@ local function startDiscordLink()
       if err then
         privMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
       else
-        privMsg("🔗 كود الربط حقك (خاص لك فقط): " .. code)
-        privMsg("ارسله بالخاص لبوت الديسكورد (يكفي الكود لحاله)، أو بأي روم: !verify " .. code)
-        privMsg("صالح ١٠ دقايق — لا تعطيه أحد.")
+        -- كنا نرسل هذي بـ3 نداءات privMsg متتالية — كل وحدة تصفّر توست اللي
+        -- قبلها بنفس اللحظة (كلهم بنفس الكولباك المتزامن)، فيطلع للاعب "ومضة"
+        -- سريعة يشوف فيها بس آخر رسالة (تاريخ الصلاحية)، ويفوته الكود نفسه
+        -- والتعليمات. صرناها توست واحد بأكثر من سطر + مدة أطول (١٤ ثانية بدل
+        -- ٢.٥) عشان يقدر يقرأ وينسخ الكود براحته.
+        toast(
+          "🔗 كود الربط حقك (خاص لك فقط): " .. code .. "\n" ..
+          "ارسله بالخاص لبوت الديسكورد (يكفي الكود لحاله)، أو بأي روم: !verify " .. code .. "\n" ..
+          "صالح ١٠ دقايق — لا تعطيه أحد.",
+          14
+        )
       end
     end)
   end)
@@ -769,19 +777,13 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   -- نستدعي ui.inputText بشكل بسيط (سطر واحد، بدون تمرير حجم vec2) — بالضبط
   -- زي مرجع صندوق الرادار (ما يستخدم حجم مخصص حتى لصندوقه المتنامي)؛ الحجم/
   -- الالتفاف المرئي كله نتحكم فيه إحنا يدوياً بالرسم اللي تحت، مو بالودجت نفسه.
-  -- كمان نخفي رسم الودجت الداخلي بالكامل (نص + خلفية + حدّ) بنفس طريقة إخفاء
-  -- شات CSP الأصلي المثبتة بـ player_menu.lua (StyleColor شفاف) — عشان ما
-  -- يصير أي "تسريب" لحظي لرسمه الداخلي (بخط ImGui الافتراضي، مو خطنا العريض)
-  -- فوق رسمتنا اليدوية أثناء الكتابة الفعلية، وهذا سبب إحساس "الخط ما يجي
-  -- بوزنه الصح" وقت الضغط للكتابة رغم إن الصندوق نفسه كبير وصحيح.
-  -- نمرر حجم صريح (w, boxH) لـ ui.inputText بدل ما نسيبه ياخذ ارتفاعه
-  -- الافتراضي (سطر واحد بخط ImGui الافتراضي) — لو تركناه بدون حجم، ودجته
-  -- الحقيقية تطلع أصغر بكثير من صندوقنا الكبير (خصوصاً صناديق الوصف/الإدمن
-  -- اللي تكبر)، فيبين خط/حدّ رفيع من رسمه الداخلي في نص الصندوق (فوق رسمتنا،
-  -- بغض النظر عن ترتيب الرسم — بالضبط زي مشكلة ChildBg). تمرير نفس حجم
-  -- صندوقنا بالضبط يخلي ودجته الحقيقية تملأ نفس المساحة اللي نغطيها بالضبط،
-  -- فيختفي أي خط متسرّب. هذا نفس أسلوب النسخة الأقدم من هالملف (قبل إصلاح
-  -- تشكيل العربي) اللي كانت تمرر حجم صريح لنفس الصناديق.
+  -- مهم: ما نمرر حجم (vec2) لـ ui.inputText إطلاقاً — جرّبنا هذا قبل عشان
+  -- نخفي خط متسرّب من رسمه الداخلي، لكن تبيّن إنه يفعّل وضع "متعدد الأسطر"
+  -- تلقائياً كل ما الارتفاع أكبر من سطر وحد (بالضبط زي صناديقنا الكبيرة) —
+  -- وبهذا الوضع Enter تسوي سطر جديد (يطلع كمسافة فاضية بالأسفل) بدل ما ترجع
+  -- entered=true، وهذا سبب مشكلة "إنتر يعطي مسافة" و"الإرسال يتلخبط". رجعنا
+  -- للاستدعاء بـ3 معاملات بس، وحلّينا تسرّب الخط بطريقة ثانية تحت
+  -- (pushStyleVarAlpha) بدل تمرير الحجم.
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
   local trans = rgbm(0, 0, 0, 0)
@@ -790,7 +792,13 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
   ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
   ui.pushStyleColor(ui.StyleColor.Border, trans)
-  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection, vec2(w, boxH))
+  -- تصفير ألفا بالكامل لكل رسم الودجت (نفس التركيبة المثبتة بـ player_menu.lua
+  -- لإخفاء شات CSP الأصلي كاملاً: StyleColor شفاف + pushStyleVarAlpha(0) مع
+  -- بعض) — يغطي أي عنصر رسم ثاني (زي هالة التركيز/Nav Highlight) ما يتأثر
+  -- بتصفير الألوان الخمسة فوق لحاله.
+  ui.pushStyleVarAlpha(0)
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
+  ui.popStyleVar()
   ui.popStyleColor(5)
   local focused = ui.itemActive() or ui.itemFocused()
   if focused then
@@ -1773,12 +1781,25 @@ end
 --=================================================================
 local function drawToast(winW, winH)
   if not S.toastText or S.clock > S.toastUntil then return end
-  local w = math.min(400, math.ceil(ui.measureDWriteText(S.toastText, 14, 360).x) + 40)
+  -- صار التوست ممكن يكون أكثر من سطر (كود الربط + التعليمات + الصلاحية
+  -- بتوست واحد بدل ٣ متتالية) — نقيس ارتفاعه الفعلي ونكبّر الصندوق له بدل
+  -- ارتفاع ثابت 40 كان يقص/يراكب النص لو أكثر من سطر.
+  local sz = 13
+  ui.pushDWriteFont(FONT)
+  local msz = ui.measureDWriteText(S.toastText, sz, 360)
+  ui.popDWriteFont()
+  local w = math.min(400, math.max(math.ceil(msz.x) + 40, 160))
+  local h = math.max(40, math.ceil(msz.y) + 24)
   local x = (winW - w) / 2
-  local y = winH - 80
-  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + 40), rgbm(0.06, 0.055, 0.07, 0.96), 12)
-  ui.drawRect(vec2(x, y), vec2(x + w, y + 40), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 12, nil, 1)
-  dwBox2(S.toastText, 13, x, y, w, 40, CW)
+  -- نثبّت حافته السفلية بنفس مكان التوست القديم (winH - 40) ونكبّر للأعلى،
+  -- عشان التوست الطويل ما يطلع خارج الشاشة تحت.
+  local y = (winH - 40) - h
+  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.06, 0.055, 0.07, 0.96), 12)
+  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(ACC.r, ACC.g, ACC.b, 0.5), 12, nil, 1)
+  ui.pushDWriteFont(FONT)
+  ui.setCursor(vec2(x + 16, y + (h - math.ceil(msz.y)) / 2))
+  ui.dwriteTextAligned(S.toastText, sz, ui.Alignment.Center, ui.Alignment.Start, vec2(w - 32, math.ceil(msz.y) + 4), true, CW)
+  ui.popDWriteFont()
 end
 
 --=================================================================

@@ -825,9 +825,14 @@ end
 local function bubbleInner(m, areaW)
   if m.sticker then return 96, 96 end
   local maxInner = math.floor((areaW - 20 * 2 - 44) * 0.94)
+  -- لازم نقيس بنفس الخط (FONT) اللي فعلاً نرسم فيه نص الرسالة تحت — قبل
+  -- كذا كان القياس بدون تحديد خط (يرجع لخط CSP الافتراضي)، فيطلع عرض/ارتفاع
+  -- مختلف عن الخط الحقيقي المرسوم، وهذا سبب رئيسي في "عدم توازن" شكل النص.
+  ui.pushDWriteFont(FONT)
   local nat = ui.measureDWriteText(m.text or "", 15, 4000)
   local innerW = math.max(30, math.min(maxInner, math.ceil(nat.x) + 2))
   local wr = ui.measureDWriteText(m.text or "", 15, innerW)
+  ui.popDWriteFont()
   return innerW, math.max(18, math.ceil(wr.y))
 end
 local function msgRowH(m, areaW)
@@ -878,9 +883,16 @@ local function drawMsgRow(m, x, areaW, yy, a)
       ui.drawRectFilled(vec2(bx1 + 12, bubY + 8), vec2(bx1 + 108, bubY + 104), rgbm(0.16, 0.16, 0.19, 1), 8)
     end
   else
+    -- نفس ملاحظة bubbleInner: نضّ نص الرسالة بخط FONT صراحة (بدل الخط
+    -- الافتراضي) عشان يتطابق شكله (وزن الخط تحديداً) مع صندوق الكتابة نفسه
+    -- (arInputText يستخدم FONT دايماً) ومع باقي عناصر الواجهة (الاسم، الأزرار).
+    -- هذا هو سبب شكوى "شات الكتابة مو موزونه مع الشات الفعلي" — الاسم والأزرار
+    -- كانت بخط FONT الغامق، بس متن الرسالة نفسه كان يترسم بالخط الافتراضي.
     ui.setCursor(vec2(bx1 + 12, bubY + 8))
+    ui.pushDWriteFont(FONT)
     ui.dwriteTextAligned(m.text or "", 15, ui.Alignment.End, ui.Alignment.Start, vec2(innerW, contentH), true,
       m.srv and rgbm(CY.r, CY.g, CY.b, a) or rgbm(1, 1, 1, a))
+    ui.popDWriteFont()
   end
   return 24 + bubH + 14
 end
@@ -1822,14 +1834,24 @@ local function drawLinkCodePanel(winW, winH)
   ly = ly + titleH + gap
 
   -- صندوق الأمر (!verify code) لحاله + زر النسخ
-  local copyW = 66
+  -- قبل كذا كان عرض صندوق النص محسوب بشكل يخلّيه يتداخل فعلياً مع زر النسخ
+  -- (يبدأ الزر عند x+w-pad-copyW-6 بس صندوق النص يمتد لين x+pad+14+(w-pad*2-copyW-14)
+  -- يعني يتجاوز بداية الزر بـ6px) — فآخر رقم/رقمين من الكود كانوا يترسمون
+  -- تحت خلفية الزر نفسها (يختفون بصرياً)، وهذا سبب "الرقم مو واضح". هنا نحسب
+  -- موقع الزر أولاً، وبعدها نعطي صندوق النص عرض يوقف بفجوة واضحة (12px) قبله
+  -- بأي حال — مافي احتمال تداخل حتى لو الكود طوّل شوي.
+  local copyW = 74
+  local btnGap = 12
   ui.drawRectFilled(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(0.11, 0.115, 0.14, 1), 8)
   ui.drawRect(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(1, 1, 1, 0.08), 8, nil, 1)
+  local btnX = x + w - pad - copyW
+  local textLeft = x + pad + 14
+  local textW = math.max(40, (btnX - btnGap) - textLeft)
   ui.pushDWriteFont(FONT)
-  ui.setCursor(vec2(x + pad + 14, ly))
-  ui.dwriteTextAligned(verifyLine, 17, ui.Alignment.End, ui.Alignment.Center, vec2(w - pad * 2 - copyW - 14, codeBoxH), false, CW)
+  ui.setCursor(vec2(textLeft, ly))
+  ui.dwriteTextAligned(verifyLine, 17, ui.Alignment.Center, ui.Alignment.Center, vec2(textW, codeBoxH), false, CW)
   ui.popDWriteFont()
-  if textButton("##linkcodecopy", x + w - pad - copyW - 6, ly + 6, copyW, codeBoxH - 12, "📋 نسخ", true) then
+  if textButton("##linkcodecopy", btnX, ly + 6, copyW, codeBoxH - 12, "📋 نسخ", true) then
     local ok = pcall(function() ac.setClipboardText(verifyLine) end)
     toast(ok and "تم نسخ الأمر ✓" or "تعذّر النسخ — انسخه يدوياً")
   end

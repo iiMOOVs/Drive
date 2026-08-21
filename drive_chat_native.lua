@@ -312,17 +312,13 @@ local function startDiscordLink()
       if err then
         privMsg("⚠️ تعذر الاتصال بنظام الربط — حاول بعد شوي")
       else
-        -- كنا نرسل هذي بـ3 نداءات privMsg متتالية — كل وحدة تصفّر توست اللي
-        -- قبلها بنفس اللحظة (كلهم بنفس الكولباك المتزامن)، فيطلع للاعب "ومضة"
-        -- سريعة يشوف فيها بس آخر رسالة (تاريخ الصلاحية)، ويفوته الكود نفسه
-        -- والتعليمات. صرناها توست واحد بأكثر من سطر + مدة أطول (١٤ ثانية بدل
-        -- ٢.٥) عشان يقدر يقرأ وينسخ الكود براحته.
-        toast(
-          "🔗 كود الربط حقك (خاص لك فقط): " .. code .. "\n" ..
-          "ارسله بالخاص لبوت الديسكورد (يكفي الكود لحاله)، أو بأي روم: !verify " .. code .. "\n" ..
-          "صالح ١٠ دقايق — لا تعطيه أحد.",
-          14
-        )
+        -- كنا نعرض هذا كتوست (نص مرسوم بس بـ ui.dwriteTextAligned) — ما فيه
+        -- طريقة تحدده/تنسخه بالماوس أو Ctrl+C إطلاقاً لأنه مو ودجت حقيقي.
+        -- صرناها لوحة مخصصة (drawLinkCodePanel تحت) فيها زر "نسخ" صريح يحط
+        -- سطر "!verify code" بالحافظة مباشرة عبر ac.setClipboardText، وخط
+        -- أكبر، والأمر بسطر لحاله.
+        S.linkCode = code
+        S.linkCodeUntil = S.clock + 40
       end
     end)
   end)
@@ -774,16 +770,16 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
     boxH = math.max(h, math.min(maxH or (h * 4), math.ceil(msz.y) + 18))
   end
 
-  -- نستدعي ui.inputText بشكل بسيط (سطر واحد، بدون تمرير حجم vec2) — بالضبط
-  -- زي مرجع صندوق الرادار (ما يستخدم حجم مخصص حتى لصندوقه المتنامي)؛ الحجم/
-  -- الالتفاف المرئي كله نتحكم فيه إحنا يدوياً بالرسم اللي تحت، مو بالودجت نفسه.
-  -- مهم: ما نمرر حجم (vec2) لـ ui.inputText إطلاقاً — جرّبنا هذا قبل عشان
-  -- نخفي خط متسرّب من رسمه الداخلي، لكن تبيّن إنه يفعّل وضع "متعدد الأسطر"
-  -- تلقائياً كل ما الارتفاع أكبر من سطر وحد (بالضبط زي صناديقنا الكبيرة) —
-  -- وبهذا الوضع Enter تسوي سطر جديد (يطلع كمسافة فاضية بالأسفل) بدل ما ترجع
-  -- entered=true، وهذا سبب مشكلة "إنتر يعطي مسافة" و"الإرسال يتلخبط". رجعنا
-  -- للاستدعاء بـ3 معاملات بس، وحلّينا تسرّب الخط بطريقة ثانية تحت
-  -- (pushStyleVarAlpha) بدل تمرير الحجم.
+  -- نمرر حجم صريح (w, boxH) — هذا يخلي ودجت ui.inputText الحقيقي يملأ نفس
+  -- مساحة صندوقنا المرسوم بالضبط بدل ارتفاعه الافتراضي (سطر وحد بخط ImGui)،
+  -- وهذا يمنع خط/حدّ رفيع من رسمه الداخلي يبين في نص الصندوق (جرّبنا نلغي
+  -- الحجم بدل كذا وحلينا التسرب بـ StyleColor/الفا شفافة بس، لكن رجع يبين —
+  -- فرجعنا للحجم الصريح، وهو المؤكد إنه يحل التسرب).
+  -- لكن تمرير حجم أطول من سطر وحد يفعّل عند CSP وضع أشبه بـ"متعدد الأسطر":
+  -- Enter تضيف سطر جديد للقيمة المرجعة بدل ما تُعتبر بس "إرسال" — لو سبناها
+  -- كذا كانت تطلع كمسافة فاضية بالأسفل. الحل: نلقط أي \n بالقيمة المرجعة
+  -- ونشيلها فوراً قبل ما نعرضها/نخزّنها (تحت)، ونجبر الودجت يتجدد بمعرّف
+  -- جديد الفريم الجاي عشان ما يضل أي أثر للسطر الجديد بذاكرته الداخلية.
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
   local trans = rgbm(0, 0, 0, 0)
@@ -792,14 +788,17 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
   ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
   ui.pushStyleColor(ui.StyleColor.Border, trans)
-  -- تصفير ألفا بالكامل لكل رسم الودجت (نفس التركيبة المثبتة بـ player_menu.lua
-  -- لإخفاء شات CSP الأصلي كاملاً: StyleColor شفاف + pushStyleVarAlpha(0) مع
-  -- بعض) — يغطي أي عنصر رسم ثاني (زي هالة التركيز/Nav Highlight) ما يتأثر
-  -- بتصفير الألوان الخمسة فوق لحاله.
+  -- تصفير ألفا بالكامل لكل رسم الودجت كمان (نفس تركيبة إخفاء شات CSP الأصلي
+  -- المثبتة بـ player_menu.lua: StyleColor شفاف + pushStyleVarAlpha(0) مع
+  -- بعض) — حماية إضافية فوق الحجم الصريح.
   ui.pushStyleVarAlpha(0)
-  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection, vec2(w, boxH))
   ui.popStyleVar()
   ui.popStyleColor(5)
+  if changed and nv and nv:find("[\r\n]") then
+    nv = nv:gsub("[\r\n]", "")
+    st.gen = st.gen + 1 -- نجبر تجديد معرّف الودجت الفريم الجاي (يمسح أثر السطر الجديد الداخلي)
+  end
   local focused = ui.itemActive() or ui.itemFocused()
   if focused then
     pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI); ui.captureKeyboard(true) end)
@@ -1803,6 +1802,62 @@ local function drawToast(winW, winH)
 end
 
 --=================================================================
+-- [24-ب] لوحة كود ربط الديسكورد — قابلة للنسخ
+--=================================================================
+-- التوست العادي فوق نص مرسوم بس (ui.dwriteTextAligned) — ما فيه طريقة
+-- تحدده بالماوس أو تنسخه بـ Ctrl+C إطلاقاً لأنه مو ودجت حقيقي. كود /link
+-- تحديداً لازم ينُنسخ فعلياً (اللاعب يروح يلصقه بالديسكورد)، فسويناله لوحة
+-- خاصة فيها صندوق للأمر "!verify code" لحاله وزر "📋 نسخ" صريح يحط الأمر
+-- كامل بالحافظة عبر ac.setClipboardText (نفس الدالة المستخدمة بمرجع IDDL
+-- لنسخ الروابط). خط أكبر من التوست العادي، وزر إغلاق يدوي بدل الاعتماد بس
+-- على مؤقّت — عشان اللاعب ما يستعجل.
+local function drawLinkCodePanel(winW, winH)
+  if not S.linkCode or S.clock > (S.linkCodeUntil or 0) then return end
+  local verifyLine = "!verify " .. S.linkCode
+  local w = 380
+  local pad = 16
+  local titleH, codeBoxH, instrH, expiryH, gap = 24, 44, 32, 18, 10
+  local h = pad + titleH + gap + codeBoxH + gap + instrH + gap + expiryH + pad
+  local x = (winW - w) / 2
+  local y = winH - h - 40
+
+  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + h), rgbm(0.07, 0.065, 0.085, 0.98), 14)
+  ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(ACC.r, ACC.g, ACC.b, 0.55), 14, nil, 1.5)
+
+  local ly = y + pad
+  ui.pushDWriteFont(FONT)
+  ui.setCursor(vec2(x + pad, ly))
+  ui.dwriteTextAligned("🔗 كود ربط الديسكورد", 15, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad - 40, titleH), false, ACC)
+  ui.popDWriteFont()
+  if iconButton("##linkcodeclose", x + w - pad - 26, ly - 2, 26, 26, "✕", false, 12) then
+    S.linkCode = nil
+  end
+  ly = ly + titleH + gap
+
+  -- صندوق الأمر (!verify code) لحاله + زر النسخ
+  local copyW = 66
+  ui.drawRectFilled(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(0.11, 0.115, 0.14, 1), 8)
+  ui.drawRect(vec2(x + pad, ly), vec2(x + w - pad, ly + codeBoxH), rgbm(1, 1, 1, 0.08), 8, nil, 1)
+  ui.pushDWriteFont(FONT)
+  ui.setCursor(vec2(x + pad + 14, ly))
+  ui.dwriteTextAligned(verifyLine, 17, ui.Alignment.End, ui.Alignment.Center, vec2(w - pad * 2 - copyW - 14, codeBoxH), false, CW)
+  ui.popDWriteFont()
+  if textButton("##linkcodecopy", x + w - pad - copyW - 6, ly + 6, copyW, codeBoxH - 12, "📋 نسخ", true) then
+    local ok = pcall(function() ac.setClipboardText(verifyLine) end)
+    toast(ok and "تم نسخ الأمر ✓" or "تعذّر النسخ — انسخه يدوياً")
+  end
+  ly = ly + codeBoxH + gap
+
+  ui.pushDWriteFont(FONT)
+  ui.setCursor(vec2(x + pad, ly))
+  ui.dwriteTextAligned("اضغط 📋 نسخ، ثم الصق الأمر بالخاص لبوت الديسكورد أو بأي روم", 12.5, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad * 2, instrH), true, CDm)
+  ly = ly + instrH + gap
+  ui.setCursor(vec2(x + pad, ly))
+  ui.dwriteTextAligned("⏳ صالح ١٠ دقايق — لا تعطيه أحد.", 12, ui.Alignment.End, ui.Alignment.Start, vec2(w - pad * 2, expiryH), false, CDm)
+  ui.popDWriteFont()
+end
+
+--=================================================================
 -- [25] الرسم الرئيسي لنافذة الشات
 --=================================================================
 local function drawChatWindow()
@@ -1959,6 +2014,7 @@ local function drawChatWindow()
     drawNewConvModal(W, H)
     drawClanModal(W, H)
     drawToast(W, H)
+    drawLinkCodePanel(W, H)
     -- ملاحظة: لا نستدعي ui.captureKeyboard() هنا عمداً. كانت موجودة بالنسخة
     -- القديمة عشان تلتقط ضغطات المفاتيح يدوياً وتمررها لمتصفح CEF (اللي ما
     -- عنده وصول تلقائي لدخل الكيبورد). حقول ui.inputText الأصلية تتولى فوكس/كتابة

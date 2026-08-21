@@ -426,6 +426,9 @@ local function clanFetchDetails(q)
   end)
 end
 local function openClanDetails(name)
+  -- تُستدعى من داخل مودال البروفايل (زر "🛡️ الكلان") — لازم نقفل البروفايل
+  -- وإلا يصير عندنا مودالين مفتوحين بنفس الوقت فوق بعض (نفس مشكلة التداخل).
+  S.profileOpen = false
   S.clanView = { loading = true, name = name }
   S.clanOpen = true
   S.clanJustOpened = true
@@ -1745,20 +1748,25 @@ local function drawChatWindow()
     local bx = 8
     if iconButton("##xbtn", bx, 10, 34, 36, "✕", false) then closeChat() end
     bx = bx + 40
-    if iconButton("##notifbtn", bx, 10, 34, 36, cStor.dc_notif and "🔔" or "🔕", cStor.dc_notif) then
-      cStor.dc_notif = not cStor.dc_notif
-      toast(cStor.dc_notif and "فقاعات الإشعارات: تشتغل لما تسكّر الشات 🔔" or "فقاعات الإشعارات: مقفلة 🔕")
-    end
-    bx = bx + 40
-    if iconButton("##clanbtn", bx, 10, 34, 36, "🛡️", S.clanOpen) then openClanPanel() end
-    bx = bx + 40
-    if ADMIN_WEBHOOK ~= "" then
-      if iconButton("##adminbtn", bx, 10, 34, 36, "📨", S.adminOpen) then S.adminOpen = true; S.adminJustOpened = true end
+    -- بقية أزرار الهيدر (إشعارات/كلان/إدارة) والسلايدر تتعطّل تماماً وقت فتح
+    -- أي مودال — عشان ما تفتح مودال ثاني فوق الأول وتصير الواجهة متداخلة (نفس
+    -- سبب مشكلة "الشات يضرب" اللي صارت وقت فتح البروفايل وغيره).
+    if not overlayActive then
+      if iconButton("##notifbtn", bx, 10, 34, 36, cStor.dc_notif and "🔔" or "🔕", cStor.dc_notif) then
+        cStor.dc_notif = not cStor.dc_notif
+        toast(cStor.dc_notif and "فقاعات الإشعارات: تشتغل لما تسكّر الشات 🔔" or "فقاعات الإشعارات: مقفلة 🔕")
+      end
       bx = bx + 40
+      if iconButton("##clanbtn", bx, 10, 34, 36, "🛡️", S.clanOpen) then openClanPanel() end
+      bx = bx + 40
+      if ADMIN_WEBHOOK ~= "" then
+        if iconButton("##adminbtn", bx, 10, 34, 36, "📨", S.adminOpen) then S.adminOpen = true; S.adminJustOpened = true end
+        bx = bx + 40
+      end
+      ui.setCursor(vec2(bx + 8, 16)); ui.setNextItemWidth(math.max(70, 292 - bx))
+      local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 35, 100, "%d%%")
+      if chop then cStor.dc_opacity = nop / 100 end
     end
-    ui.setCursor(vec2(bx + 8, 16)); ui.setNextItemWidth(math.max(70, 292 - bx))
-    local nop, chop = ui.slider("##opac", math.floor((cStor.dc_opacity or 1) * 100), 35, 100, "%d%%")
-    if chop then cStor.dc_opacity = nop / 100 end
     -- الشعار/العنوان بمنطقة السحب (يمين) — نص فقط، بدون عناصر تفاعلية
     dwLeft2("DRIVE", 20, W - 210, 8, 90, 40, rgbm(0.09,0.06,0.02,1))
     dwLeft2("الشات 💬", 15, W - 118, 14, 110, 30, rgbm(0.10,0.06,0.02,1))
@@ -1776,61 +1784,68 @@ local function drawChatWindow()
     local midX = sideW + 12
     local midW = W - sideW - chW - 24
 
-    drawMemberSidebar(6, bodyY, sideW, bodyH)
+    -- كل جسم الشات (سايدبار الأعضاء/سجل الرسائل/سايدبار القنوات/المنتقي/الفوتر)
+    -- يتعطّل بالكامل وقت فتح أي مودال — الخلفية المعتّمة (drawModalBackdrop)
+    -- كانت مجرد رسم مربع شفاف بدون أي حجب فعلي للنقر، فكان ممكن تضغط على
+    -- عضو/زر خلف المودال وتفتح مودال ثاني فوقه (تداخل + "ضرب" بالواجهة).
+    -- الآن الجسم كامل ما يُرسم ولا يُعالج نقر إطلاقاً طول ما فيه مودال مفتوح.
+    if not overlayActive then
+      drawMemberSidebar(6, bodyY, sideW, bodyH)
 
-    -- سجل الرسائل الأوسط حسب القناة النشطة
-    ui.drawRectFilled(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(0.09, 0.086, 0.106, 1), 12)
-    ui.drawRect(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(1,1,1,0.06), 12, nil, 1)
-    if S.activeChannel == "general" then
-      local fsb = S.newGeneral; S.newGeneral = false
-      renderMsgList("##genlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.log, function(m) return m.mine end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
-    elseif S.activeChannel == "clan" then
-      local fsb = S.newClan; S.newClan = false
-      renderMsgList("##clanlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.clanLog, function(m) return m.name == myName() end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
-    else
-      if S.activeDmWith then
-        local fsb = S.newDm; S.newDm = false
-        renderMsgList("##dmlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.dmMsgs[S.activeDmWith] or {}, function(m) return m.name == myName() end, nil, fsb)
+      -- سجل الرسائل الأوسط حسب القناة النشطة
+      ui.drawRectFilled(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(0.09, 0.086, 0.106, 1), 12)
+      ui.drawRect(vec2(midX, bodyY), vec2(midX + midW, bodyY + bodyH), rgbm(1,1,1,0.06), 12, nil, 1)
+      if S.activeChannel == "general" then
+        local fsb = S.newGeneral; S.newGeneral = false
+        renderMsgList("##genlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.log, function(m) return m.mine end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
+      elseif S.activeChannel == "clan" then
+        local fsb = S.newClan; S.newClan = false
+        renderMsgList("##clanlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.clanLog, function(m) return m.name == myName() end, function(nm) S.profileOpen = true; S.profileName = nm; S.descLoadedFor = nil; S.profileJustOpened = true end, fsb)
       else
-        dwBox2("اختر محادثة من القائمة →", 13, midX, bodyY + bodyH / 2 - 12, midW, 24, CDm)
+        if S.activeDmWith then
+          local fsb = S.newDm; S.newDm = false
+          renderMsgList("##dmlog", midX + 6, bodyY + 6, midW - 12, bodyH - 12, S.dmMsgs[S.activeDmWith] or {}, function(m) return m.name == myName() end, nil, fsb)
+        else
+          dwBox2("اختر محادثة من القائمة →", 13, midX, bodyY + bodyH / 2 - 12, midW, 24, CDm)
+        end
       end
-    end
 
-    drawChannelSidebar(midX + midW + 12, bodyY, chW, bodyH)
+      drawChannelSidebar(midX + midW + 12, bodyY, chW, bodyH)
 
-    -- ===== منتقي الملصقات (لو مفتوح) =====
-    local footY = H - footH - 8
-    drawPickerPanel(6, footY, W - 12)
+      -- ===== منتقي الملصقات (لو مفتوح) =====
+      local footY = H - footH - 8
+      drawPickerPanel(6, footY, W - 12)
 
-    -- ===== الفوتر =====
-    local pw = 40
-    local px = 8
-    if iconButton("##pemoji", px, footY, pw, footH - 8, "😀", S.activePicker == "emoji") then
-      S.activePicker = (S.activePicker == "emoji") and nil or "emoji"
+      -- ===== الفوتر =====
+      local pw = 40
+      local px = 8
+      if iconButton("##pemoji", px, footY, pw, footH - 8, "😀", S.activePicker == "emoji") then
+        S.activePicker = (S.activePicker == "emoji") and nil or "emoji"
+      end
+      px = px + pw + 6
+      if iconButton("##pstick", px, footY, pw, footH - 8, "🖼️", S.activePicker == "stick") then
+        S.activePicker = (S.activePicker == "stick") and nil or "stick"
+      end
+      px = px + pw + 6
+      if iconButton("##pgif", px, footY, pw, footH - 8, "GIF", S.activePicker == "gif", 12) then
+        S.activePicker = (S.activePicker == "gif") and nil or "gif"
+      end
+      px = px + pw + 6
+      if iconButton("##pphr", px, footY, pw, footH - 8, "💬", S.activePicker == "phr") then
+        S.activePicker = (S.activePicker == "phr") and nil or "phr"
+      end
+      px = px + pw + 10
+      local sendW = 50
+      local inputW = W - px - sendW - 14
+      if S.wantFocusInput then ui.setKeyboardFocusHere(); S.wantFocusInput = false end
+      ui.setCursor(vec2(px, footY))
+      local placeholderTxt = S.activeChannel == "dm" and (S.activeDmWith and ("رسالة إلى " .. S.activeDmWith .. "...") or "افتح محادثة أول...")
+        or (S.activeChannel == "clan" and "رسالة لأعضاء الكلان..." or "اكتب رسالتك هنا...")
+      local nmsg, mchg, mentered = ui.inputText(placeholderTxt .. "##msgin", S.msgInput, ui.InputTextFlags.Placeholder, vec2(inputW, footH - 8))
+      S.msgInput = nmsg
+      if mentered then doSendChannel() end
+      if textButton("##sendbtn", px + inputW + 8, footY, sendW, footH - 8, "➤", true) then doSendChannel() end
     end
-    px = px + pw + 6
-    if iconButton("##pstick", px, footY, pw, footH - 8, "🖼️", S.activePicker == "stick") then
-      S.activePicker = (S.activePicker == "stick") and nil or "stick"
-    end
-    px = px + pw + 6
-    if iconButton("##pgif", px, footY, pw, footH - 8, "GIF", S.activePicker == "gif", 12) then
-      S.activePicker = (S.activePicker == "gif") and nil or "gif"
-    end
-    px = px + pw + 6
-    if iconButton("##pphr", px, footY, pw, footH - 8, "💬", S.activePicker == "phr") then
-      S.activePicker = (S.activePicker == "phr") and nil or "phr"
-    end
-    px = px + pw + 10
-    local sendW = 50
-    local inputW = W - px - sendW - 14
-    if S.wantFocusInput then ui.setKeyboardFocusHere(); S.wantFocusInput = false end
-    ui.setCursor(vec2(px, footY))
-    local placeholderTxt = S.activeChannel == "dm" and (S.activeDmWith and ("رسالة إلى " .. S.activeDmWith .. "...") or "افتح محادثة أول...")
-      or (S.activeChannel == "clan" and "رسالة لأعضاء الكلان..." or "اكتب رسالتك هنا...")
-    local nmsg, mchg, mentered = ui.inputText(placeholderTxt .. "##msgin", S.msgInput, ui.InputTextFlags.Placeholder, vec2(inputW, footH - 8))
-    S.msgInput = nmsg
-    if mentered then doSendChannel() end
-    if textButton("##sendbtn", px + inputW + 8, footY, sendW, footH - 8, "➤", true) then doSendChannel() end
 
     -- ===== المودالات (فوق كل شي) =====
     drawProfileModal(W, H)

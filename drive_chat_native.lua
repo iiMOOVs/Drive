@@ -770,16 +770,12 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
     boxH = math.max(h, math.min(maxH or (h * 4), math.ceil(msz.y) + 18))
   end
 
-  -- نمرر حجم صريح (w, boxH) — هذا يخلي ودجت ui.inputText الحقيقي يملأ نفس
-  -- مساحة صندوقنا المرسوم بالضبط بدل ارتفاعه الافتراضي (سطر وحد بخط ImGui)،
-  -- وهذا يمنع خط/حدّ رفيع من رسمه الداخلي يبين في نص الصندوق (جرّبنا نلغي
-  -- الحجم بدل كذا وحلينا التسرب بـ StyleColor/الفا شفافة بس، لكن رجع يبين —
-  -- فرجعنا للحجم الصريح، وهو المؤكد إنه يحل التسرب).
-  -- لكن تمرير حجم أطول من سطر وحد يفعّل عند CSP وضع أشبه بـ"متعدد الأسطر":
-  -- Enter تضيف سطر جديد للقيمة المرجعة بدل ما تُعتبر بس "إرسال" — لو سبناها
-  -- كذا كانت تطلع كمسافة فاضية بالأسفل. الحل: نلقط أي \n بالقيمة المرجعة
-  -- ونشيلها فوراً قبل ما نعرضها/نخزّنها (تحت)، ونجبر الودجت يتجدد بمعرّف
-  -- جديد الفريم الجاي عشان ما يضل أي أثر للسطر الجديد بذاكرته الداخلية.
+  -- رجّعنا هنا لأبسط وأثبت شكل: بدون حجم صريح، وبدون pushStyleVarAlpha —
+  -- جرّبنا حجم صريح (vec2) و/أو تصفير الألفا الكامل عشان نخفي خط متسرّب من
+  -- رسم الودجت الداخلي، لكن هالتركيبة (حجم + ألفا صفر مع بعض) سبّبت مشكلة
+  -- أخطر بكثير: الكتابة توقفت تماماً بصندوق الرسالة. الأولوية المطلقة إن
+  -- الكتابة تشتغل صح دايماً — خط رفيع متسرّب أهون من صندوق ما تقدر تكتب فيه.
+  -- رجعنا لنفس أسلوب مرجع الرادار المثبت (بدون حجم، ستايل كولور شفاف بس).
   ui.setCursor(vec2(x, y))
   ui.setNextItemWidth(w)
   local trans = rgbm(0, 0, 0, 0)
@@ -788,17 +784,8 @@ local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
   ui.pushStyleColor(ui.StyleColor.FrameBgHovered, trans)
   ui.pushStyleColor(ui.StyleColor.FrameBgActive, trans)
   ui.pushStyleColor(ui.StyleColor.Border, trans)
-  -- تصفير ألفا بالكامل لكل رسم الودجت كمان (نفس تركيبة إخفاء شات CSP الأصلي
-  -- المثبتة بـ player_menu.lua: StyleColor شفاف + pushStyleVarAlpha(0) مع
-  -- بعض) — حماية إضافية فوق الحجم الصريح.
-  ui.pushStyleVarAlpha(0)
-  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection, vec2(w, boxH))
-  ui.popStyleVar()
+  local nv, changed, entered = ui.inputText(realId, value, ui.InputTextFlags.RetainSelection)
   ui.popStyleColor(5)
-  if changed and nv and nv:find("[\r\n]") then
-    nv = nv:gsub("[\r\n]", "")
-    st.gen = st.gen + 1 -- نجبر تجديد معرّف الودجت الفريم الجاي (يمسح أثر السطر الجديد الداخلي)
-  end
   local focused = ui.itemActive() or ui.itemFocused()
   if focused then
     pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI); ui.captureKeyboard(true) end)

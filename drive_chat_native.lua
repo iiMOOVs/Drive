@@ -730,6 +730,64 @@ local function textButton(id, x, y, w, h, label, primary)
   return clicked
 end
 
+-- صندوق كتابة يعرض العربي صحيح (متّصل الحروف وباتجاه صحيح) أثناء الكتابة
+-- نفسها، مو بس بعد الإرسال. سبب المشكلة: عارض النص الافتراضي لـ ui.inputText
+-- ما يسوي "shaping" للعربي، فيطلع الحروف منفصلة ومعكوسة الترتيب وأنت تكتب.
+-- الحل (نفس طريقة صندوق تنبيه الرادار بمنيو الإدمن، اللي أرسله المستخدم كمرجع):
+-- نرسم ui.inputText حقيقي (يتولى الفوكس/المؤشر/النسخ فعلياً — بس نخفي شكله)،
+-- نغطيه بمستطيل، ثم نرسم القيمة نفسها يدوياً فوقه بـ ui.dwriteTextAligned
+-- (محاذاة End = يمين، مع Shaping صحيح) — نفس الأسلوب المستخدم أصلاً لعرض كل
+-- رسائل الشات المُرسلة (drawMsgRow). القيمة المخزّنة بالمتغير نفسها سليمة
+-- دايماً بكل الأحوال (المشكلة كانت بالعرض بس، مو بالنص المُرسَل فعلياً).
+local function arInputText(id, x, y, w, h, value, placeholder, grow, maxH)
+  value = value or ""
+  local sz = 15
+  local boxH = h
+  if grow then
+    local measureText = value ~= "" and value or " "
+    ui.pushDWriteFont(FONT)
+    local msz = ui.measureDWriteText(measureText, sz, w - 20)
+    ui.popDWriteFont()
+    boxH = math.max(h, math.min(maxH or (h * 4), math.ceil(msz.y) + 18))
+  end
+
+  -- نستدعي ui.inputText بشكل بسيط (سطر واحد، بدون تمرير حجم vec2) — بالضبط
+  -- زي مرجع صندوق الرادار (ما يستخدم حجم مخصص حتى لصندوقه المتنامي)؛ الحجم/
+  -- الالتفاف المرئي كله نتحكم فيه إحنا يدوياً بالرسم اللي تحت، مو بالودجت نفسه.
+  ui.setCursor(vec2(x, y))
+  ui.setNextItemWidth(w)
+  local nv, changed, entered = ui.inputText(id, value, ui.InputTextFlags.RetainSelection)
+  if ui.itemActive() or ui.itemFocused() then
+    pcall(function() ac.setCurrentInputMethod(ac.UserInputMode.UI); ui.captureKeyboard(true) end)
+  end
+  local outVal = changed and nv or value
+
+  ui.drawRectFilled(vec2(x, y), vec2(x + w, y + boxH), rgbm(0.11, 0.115, 0.14, 1), 8)
+  ui.drawRect(vec2(x, y), vec2(x + w, y + boxH), rgbm(ACC.r, ACC.g, ACC.b, 0.30), 8, nil, 1)
+  ui.pushDWriteFont(FONT)
+  if outVal ~= "" then
+    ui.setCursor(vec2(x + 10, grow and (y + 5) or y))
+    ui.dwriteTextAligned(outVal, sz, ui.Alignment.End, grow and ui.Alignment.Start or ui.Alignment.Center, vec2(w - 20, boxH - 8), grow and true or false, CW)
+  elseif placeholder and placeholder ~= "" then
+    ui.setCursor(vec2(x + 10, y))
+    ui.dwriteTextAligned(placeholder, sz, ui.Alignment.End, ui.Alignment.Center, vec2(w - 20, boxH), false, CDm)
+  end
+  ui.popDWriteFont()
+  return outVal, changed, entered, boxH
+end
+
+-- ui.childWindow يرسم خلفيته الخاصة (ChildBg) فوق أي مستطيل نرسمه إحنا يدوياً
+-- قبله — وهذا كان السبب الحقيقي وراء "زر الشفافية ما يشتغل": كنا نغيّر عتامة
+-- المستطيل اللي نرسمه، لكن أغلب مساحة الشات فعلياً هي childWindow (سجل
+-- الرسائل + قائمة الأعضاء + قائمة القنوات)، ولونها الافتراضي من CSP يبقى ثابت
+-- بغض النظر عن السلايدر. نلغي خلفية ChildBg بالكامل (شفافة 0,0,0,0) عشان
+-- خلفيتنا المرسومة يدوياً (المرتبطة بـ dc_opacity) هي الوحيدة الظاهرة.
+local function childWindowT(id, size, fn)
+  ui.pushStyleColor(ui.StyleColor.ChildBg, rgbm(0, 0, 0, 0))
+  ui.childWindow(id, size, fn)
+  ui.popStyleColor(1)
+end
+
 --=================================================================
 -- [13] فقاعات الإشعارات (Native — لما الشات مقفول) — كما هي بلا تغيير
 --=================================================================
@@ -860,7 +918,7 @@ local function drawLogBubble(m, mine, w)
 end
 local function renderMsgList(id, x, y, w, h, list, myPredicate, onOpenProfile, forceScrollBottom)
   ui.setCursor(vec2(x, y))
-  ui.childWindow(id, vec2(w, h), function()
+  childWindowT(id, vec2(w, h), function()
     local innerW = w - 16
     local yy = 6
     for _, m in ipairs(list) do
@@ -894,8 +952,7 @@ local function drawMemberSidebar(x, y, w, h)
   ui.drawRect(vec2(x, y), vec2(x + w, y + h), rgbm(1, 1, 1, 0.06 * bga), 12, nil, 1)
   dwLeft2("👥 الأعضاء (" .. #S.members .. ")", 15, x + 14, y + 10, w - 28, 22, CW)
   -- بحث
-  ui.setCursor(vec2(x + 12, y + 36))
-  local newSearch, changed = ui.inputText("ابحث عن عضو...##memsearch", S.memberSearch, ui.InputTextFlags.Placeholder)
+  local newSearch = arInputText("##memsearch", x + 12, y + 36, w - 24, 26, S.memberSearch, "ابحث عن عضو...")
   S.memberSearch = newSearch
   -- ترتيب: أنا أولاً، ثم الرتبة، ثم الاسم
   local sorted = {}
@@ -908,7 +965,7 @@ local function drawMemberSidebar(x, y, w, h)
   end)
   local q = (S.memberSearch or ""):lower()
   ui.setCursor(vec2(x + 6, y + 64))
-  ui.childWindow("##mlistc", vec2(w - 12, h - 74), function()
+  childWindowT("##mlistc", vec2(w - 12, h - 74), function()
     local yy = 4
     for _, m in ipairs(sorted) do
       if q == "" or (m.name or ""):lower():find(q, 1, true) then
@@ -967,13 +1024,12 @@ local function drawChannelSidebar(x, y, w, h)
   local listH = h - 66
   if S.activeChannel == "dm" then
     -- بحث + زر محادثة جديدة
-    ui.setCursor(vec2(x + 10, listY))
-    local ns = ui.inputText("ابحث في المحادثات...##dmsearch", S.dmSearch, ui.InputTextFlags.Placeholder)
+    local ns = arInputText("##dmsearch", x + 10, listY, w - 20, 26, S.dmSearch, "ابحث في المحادثات...")
     S.dmSearch = ns
     listY = listY + 30; listH = listH - 30 - 40
   end
   ui.setCursor(vec2(x + 8, listY))
-  ui.childWindow("##chlistc", vec2(w - 16, listH), function()
+  childWindowT("##chlistc", vec2(w - 16, listH), function()
     if S.activeChannel == "general" then
       ui.drawRectFilled(vec2(4, 4), vec2(w - 24, 60), rgbm(ACC.r, ACC.g, ACC.b, 0.14), 10)
       dwLeft2("دردشة عامة", 14, 46, 12, w - 60, 20, CW)
@@ -1080,7 +1136,7 @@ local function drawPickerPanel(x, y, w)
   dwLeft2(PICKER_TITLES[S.activePicker] or "", 12.5, x + 14, py + 7, w - 60, 18, CDm)
   if textButton("##pickerclose", x + w - 36, py + 5, 28, 22, "✕", false) then S.activePicker = nil end
   ui.setCursor(vec2(x + 6, py + 31))
-  ui.childWindow("##pickerc", vec2(w - 12, ph - 37), function()
+  childWindowT("##pickerc", vec2(w - 12, ph - 37), function()
     if S.activePicker == "emoji" then
       local cols = 11; local cw = (w - 24) / cols
       local cx, cy = 4, 4
@@ -1256,11 +1312,10 @@ local function drawProfileModal(winW, winH)
     -- لازم نحدّث S.descInput من وصف العضو قبل ما نرسم صندوق الإدخال، وإلا
     -- أول فريم بعد فتح البروفايل يعرض النص القديم (من عضو/فتحة سابقة) لحظة وحدة.
     if S.descLoadedFor ~= m.name then S.descInput = m.desc or ""; S.descLoadedFor = m.name end
-    ui.setCursor(vec2(cx + 18, by))
-    local nd = ui.inputText("اكتب وصفك (١٢٠ حرف)...##descinput", S.descInput, ui.InputTextFlags.Placeholder, vec2(cw - 36, 44))
+    local nd, _, _, boxH = arInputText("##descinput", cx + 18, by, cw - 36, 44, S.descInput, "اكتب وصفك (١٢٠ حرف)...", true, 110)
     if #nd > 120 then nd = nd:sub(1, 120) end
     S.descInput = nd
-    by = by + 50
+    by = by + boxH + 6
     if textButton("##savedesc", cx + 18, by, cw - 36, 30, "حفظ الوصف", true) then sendDescription(S.descInput) end
     by = by + 36
   else
@@ -1305,8 +1360,7 @@ local function drawAdminModal(winW, winH)
   if textButton("##adminx", cx + 10, cy + 11, 34, 34, "✕", false) then S.adminOpen = false end
   dwLeft2("📨 تواصل مع الإدارة", 16, cx + 54, cy + 14, cw - 60, 28, rgbm(0.08,0.05,0.02,1))
   dwLeft2("رسالتك توصل مباشرة لروم الإدارة في الديسكورد مع اسمك.", 11.5, cx + 18, cy + 66, cw - 36, 32, CDm)
-  ui.setCursor(vec2(cx + 18, cy + 100))
-  local nt = ui.inputText("اكتب رسالتك للإدارة...##admintxt", S.adminText, ui.InputTextFlags.Placeholder, vec2(cw - 36, 70))
+  local nt = arInputText("##admintxt", cx + 18, cy + 100, cw - 36, 70, S.adminText, "اكتب رسالتك للإدارة...", true, 70)
   S.adminText = nt
   if textButton("##adminsend", cx + 18, cy + 180, (cw - 44) / 2, 34, "إرسال 📤", true) then
     if S.adminText ~= "" then sendAdminMsg(S.adminText) end
@@ -1333,12 +1387,11 @@ local function drawNewConvModal(winW, winH)
   ui.drawRect(vec2(cx, cy), vec2(cx + cw, cy + ch), rgbm(ACC.r, ACC.g, ACC.b, 0.45), 16, nil, 1)
   if textButton("##ncx", cx + 10, cy + 10, 30, 30, "✕", false) then S.newConvOpen = false end
   dwLeft2("✨ محادثة جديدة", 14, cx + 18, cy + 48, cw - 36, 22, CW)
-  ui.setCursor(vec2(cx + 18, cy + 76))
-  local ns = ui.inputText("ابحث عن عضو...##newconvsearch", S.newConvSearch, ui.InputTextFlags.Placeholder)
+  local ns = arInputText("##newconvsearch", cx + 18, cy + 76, cw - 36, 26, S.newConvSearch, "ابحث عن عضو...")
   S.newConvSearch = ns
   local q = (S.newConvSearch or ""):lower()
   ui.setCursor(vec2(cx + 18, cy + 108))
-  ui.childWindow("##ncl", vec2(cw - 36, ch - 118), function()
+  childWindowT("##ncl", vec2(cw - 36, ch - 118), function()
     local yy = 4
     for _, m in ipairs(S.members) do
       if not m.isMe and (q == "" or (m.name or ""):lower():find(q, 1, true)) then
@@ -1417,7 +1470,7 @@ local function drawClanModal(winW, winH)
   end
 
   ui.setCursor(vec2(cx + 10, cy + 62))
-  ui.childWindow("##clanbodyc", vec2(cw - 20, ch - 66), function()
+  childWindowT("##clanbodyc", vec2(cw - 20, ch - 66), function()
     local y = 6
 
     if S.clanView then
@@ -1466,8 +1519,7 @@ local function drawClanModal(winW, winH)
     if S.clanScreen == "invite" and S.myClan then
       dwLeft2("➕ دعوة لاعب", 15, 8, y, cw - 40, 22, CW); y = y + 30
       dwLeft2("اختر لاعب متصل بدون كلان لدعوته:", 12, 8, y, cw - 40, 18, CDm); y = y + 24
-      ui.setCursor(vec2(8, y))
-      local ns = ui.inputText("🔍 ابحث...##invsearch", S.clanInviteSearch, ui.InputTextFlags.Placeholder)
+      local ns = arInputText("##invsearch", 8, y, cw - 16, 26, S.clanInviteSearch, "🔍 ابحث...")
       S.clanInviteSearch = ns; y = y + 34
       local q = (S.clanInviteSearch or ""):lower()
       local myMembers = {}
@@ -1492,10 +1544,9 @@ local function drawClanModal(winW, winH)
     if S.clanScreen == "edit" and S.myClan then
       dwLeft2("✏️ تعديل الكلان", 15, 8, y, cw - 40, 22, CW); y = y + 32
       dwLeft2("📝 الوصف", 12, 8, y, cw - 40, 16, CDm); y = y + 18
-      ui.setCursor(vec2(8, y))
-      local nd = ui.inputText("وصف الكلان...##editdesc", S.clanEditDesc, ui.InputTextFlags.Placeholder, vec2(cw - 40, 56))
+      local nd, _, _, ndBoxH = arInputText("##editdesc", 8, y, cw - 16, 56, S.clanEditDesc, "وصف الكلان...", true, 110)
       if #nd > 120 then nd = nd:sub(1, 120) end
-      S.clanEditDesc = nd; y = y + 64
+      S.clanEditDesc = nd; y = y + ndBoxH + 8
       dwLeft2("🎨 لون الكلان", 12, 8, y, cw - 40, 16, CDm); y = y + 20
       for i, pc in ipairs(CLAN_COLOR_PRESETS) do
         local xx = 8 + (i - 1) * 40
@@ -1558,12 +1609,10 @@ local function drawClanModal(winW, winH)
         return
       end
       dwLeft2("✨ إنشاء كلان جديد", 13, 8, y, cw - 40, 18, CDm); y = y + 24
-      ui.setCursor(vec2(8, y))
-      local nn = ui.inputText("اسم الكلان (2-20)##clanname", S.clanCreateName, ui.InputTextFlags.Placeholder)
+      local nn = arInputText("##clanname", 8, y, cw - 16, 26, S.clanCreateName, "اسم الكلان (2-20)")
       if #nn > 20 then nn = nn:sub(1,20) end
       S.clanCreateName = nn; y = y + 34
-      ui.setCursor(vec2(8, y))
-      local nt = ui.inputText("التاق (2-5)##clantag", S.clanCreateTag, ui.InputTextFlags.Placeholder)
+      local nt = arInputText("##clantag", 8, y, cw - 16, 26, S.clanCreateTag, "التاق (2-5)")
       if #nt > 5 then nt = nt:sub(1,5) end
       S.clanCreateTag = nt; y = y + 38
       dwLeft2("🎨 اللون:", 12, 8, y, cw - 40, 16, CDm); y = y + 20
@@ -1852,10 +1901,9 @@ local function drawChatWindow()
       local sendW = 50
       local inputW = W - px - sendW - 14
       if S.wantFocusInput then ui.setKeyboardFocusHere(); S.wantFocusInput = false end
-      ui.setCursor(vec2(px, footY))
       local placeholderTxt = S.activeChannel == "dm" and (S.activeDmWith and ("رسالة إلى " .. S.activeDmWith .. "...") or "افتح محادثة أول...")
         or (S.activeChannel == "clan" and "رسالة لأعضاء الكلان..." or "اكتب رسالتك هنا...")
-      local nmsg, mchg, mentered = ui.inputText(placeholderTxt .. "##msgin", S.msgInput, ui.InputTextFlags.Placeholder, vec2(inputW, footH - 8))
+      local nmsg, mchg, mentered = arInputText("##msgin", px, footY, inputW, footH - 8, S.msgInput, placeholderTxt)
       S.msgInput = nmsg
       if mentered then doSendChannel() end
       if textButton("##sendbtn", px + inputW + 8, footY, sendW, footH - 8, "➤", true) then doSendChannel() end
